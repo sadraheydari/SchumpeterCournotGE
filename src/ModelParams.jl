@@ -1,4 +1,4 @@
-    mutable struct ModelParameters
+mutable struct ModelParameters
     n::Int64        # number of firms
     β::Float64      # discount factor
     σ::Float64      # risk aversion

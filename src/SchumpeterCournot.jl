@@ -24,6 +24,7 @@ include("ProgressTrack.jl")
 include("Types.jl")
 include("Bellman.jl")
 include("Solver.jl")
+include("PlotSaving.jl")
 
 # ============================================================
 # Public API
@@ -33,6 +34,7 @@ export ModelSettings,
        ModelParameters,
        solve_PFI!,
        solve_values!,
-       update_policy!
+       update_policy!,
+       save_plot
 
 end;
