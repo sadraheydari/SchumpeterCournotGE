@@ -1,0 +1,198 @@
+"""
+    ProgressBar
+
+A log-distance based progress tracker designed for solvers with
+geometric convergence.
+
+This tracker:
+
+- Assumes `log(diff)` decreases approximately linearly
+- Computes smooth progress toward a threshold `tol`
+- Estimates remaining iterations using local slope
+- Displays ETA based on average iteration time
+- Renders a colored progress bar in terminal
+
+# Fields
+- `tol::Float64`            : convergence tolerance
+- `log_tol::Float64`        : log(tol)
+- `log_diff0::Float64`      : initial log difference
+- `bar_length::Int`         : width of progress bar
+- `start_time::Float64`     : solver start timestamp
+- `prev_log_diff::Float64`  : previous log difference
+- `prev_iter::Int`          : previous iteration index
+- `slope_avg::Float64`      : smoothed convergence slope
+
+This tracker assumes geometric convergence.
+If convergence is irregular, ETA may fluctuate.
+"""
+mutable struct ProgressBar
+    tol::Float64
+    log_tol::Float64
+    log_diff0::Float64
+    bar_length::Int
+    start_time::Float64
+    prev_log_diff::Float64
+    prev_iter::Int
+    slope_avg::Float64
+    color:: String
+    initiated:: Bool
+end
+
+# ----------------------------------------------------
+# ANSI Colors
+# ----------------------------------------------------
+
+const RESET  = "\e[0m"
+const GREEN  = "\e[32m"
+const YELLOW = "\e[33m"
+const RED    = "\e[31m"
+const CYAN   = "\e[36m"
+
+# ----------------------------------------------------
+# Initialization
+# ----------------------------------------------------
+
+"""
+    init!(tol, diff0; bar_length=40)
+
+Create and initialize a `ProgressBar`.
+
+Must be called after first `diff` is computed.
+"""
+function ProgressBar(tol::Float64; diff0::Float64=Inf, bar_length::Int=40, color::String=GREEN)
+
+    logd = log(diff0)
+
+    _, cols = displaysize(stdout)
+    otput_len = 50 # estimated length of non-bar output (iter, percent, diff, ETA)
+    bar_length = max(10, min(bar_length, cols - otput_len))
+
+    return ProgressBar(
+        tol,
+        log(tol),
+        logd,
+        bar_length,
+        time(),
+        logd,
+        1,
+        0.0,
+        color,
+        false
+    )
+end
+
+# ----------------------------------------------------
+# Update
+# ----------------------------------------------------
+
+"""
+        format_eta(seconds)
+Format ETA in seconds to "HH:MM:SS.s" format.
+"""
+function format_eta(seconds::Float64)
+
+    if !isfinite(seconds) || seconds < 0
+        return "--:--:--.-"
+    end
+
+    h = floor(Int, seconds ÷ 3600)
+    m = floor(Int, (seconds % 3600) ÷ 60)
+    s = seconds % 60
+
+    return @sprintf("%02d:%02d:%04.1f", h, m, s)
+end
+
+
+"""
+    update!(pt, diff, iter)
+
+Update progress display.
+
+Arguments:
+- `diff` : current maximum difference
+- `iter` : current iteration index
+
+Displays:
+- iteration number
+- colored progress bar
+- percentage
+- current diff
+- ETA (seconds)
+
+Uses exponential smoothing for slope stability.
+"""
+function update!(pt::ProgressBar, diff::Float64, iter::Int)
+
+    if !pt.initiated
+        pt.initiated = true
+        pt.log_diff0 = log(diff)
+    end
+
+    log_diff = log(diff)
+    pt.log_diff0 = max(pt.log_diff0, log_diff) # update initial log diff if it increases
+
+    # ----- progress in log space
+    progress = 1 - (log_diff - pt.log_tol) /
+                   (pt.log_diff0 - pt.log_tol)
+
+    progress = clamp(progress, 0.0, 1.0)
+
+    filled = round(Int, progress * pt.bar_length)
+    empty  = pt.bar_length - filled
+
+    bar = "[ " *
+          repeat("█", filled) *
+          repeat("-", empty) *
+          " ]"
+
+    # ----- remaining time estimation
+    elapsed = time() - pt.start_time
+    avg_time = elapsed / progress
+    eta = (1 - progress) * avg_time
+    eta = max(eta, 0.0) # avoid negative ETA if progress is 1
+
+    # ----- color selection
+    color = pt.color
+
+    percent = round(progress * 100, digits=1)
+
+    diff_str = @sprintf("%.3e", diff)
+    eta_str = format_eta(eta)
+    print("\r\033[K",
+          CYAN, "Iter $iter ",
+          color, bar, " ",
+          "$percent% ",
+          "(diff=$diff_str)",
+          "\tETA=$eta_str")
+
+    flush(stdout)
+
+    pt.prev_log_diff = log_diff
+    pt.prev_iter = iter
+end
+
+# ----------------------------------------------------
+# Finish
+# ----------------------------------------------------
+
+"""
+    finish!(pt, iter, diff)
+
+Call once convergence is reached.
+
+Prints final summary line and resets color.
+"""
+function finish!(pt::ProgressBar, iter::Int, diff::Float64)
+    diff_str = @sprintf("%.3e", diff)
+    eta_str = format_eta(time() - pt.start_time)
+    # println()
+    println("\r\033[K",
+            GREEN,
+            "✓ Converged in ",
+            YELLOW, "$iter",
+            GREEN, " iterations after ",
+            YELLOW, "$eta_str ",
+            GREEN,
+            "with diff=$diff_str",
+            RESET)
+end
