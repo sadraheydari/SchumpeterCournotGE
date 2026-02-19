@@ -83,12 +83,12 @@ by a cutoff index `ñ`, and the function returns:
 - `1 ≤ start_index ≤ end_index ≤ length(A_vec_sorted)`.
 - All relevant productivity values are positive.
 """
-@param_forward function find_active_threshold(
-        A_vec_sorted:: Vector{Float64},
-        start_index:: Int64, 
-        end_index:: Int64,
-        p:: ModelParameters
-    ):: Tuple{Int64, Float64}
+function find_active_threshold(
+    A_vec_sorted:: Vector{Float64}, 
+    start_index:: Int64, 
+    end_index:: Int64, 
+    p:: ModelParameters
+):: Tuple{Int64, Float64}
     
     # Termination condition for the recursion
     if start_index >= end_index
@@ -121,6 +121,8 @@ by a cutoff index `ñ`, and the function returns:
         return find_active_threshold(A_vec_sorted, start_index, mid_index - 1, p) 
     end
 end;
+find_active_threshold(A_vec:: Vector{Float64}, si:: Int64, ei:: Int64, e:: ModelEnvironment) = find_active_threshold(A_vec, si, ei, e.param);
+find_active_threshold(A_vec:: Vector{Float64}, si:: Int64, ei:: Int64, m:: DSCIModel) = find_active_threshold(A_vec, si, ei, m.env.param);
 
 
 
@@ -157,7 +159,7 @@ and the outcome is mapped back to the original firm ordering.
       if firm `i` is active in equilibrium.
     - `Ã::Float64`: Harmonic mean productivity among active firms.
 """
-@param_forward function is_active(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Vector{Bool}, Float64} 
+function is_active(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Vector{Bool}, Float64} 
     
     sorted_indices = sortperm(A_vec, rev=true)
     rank_sorted = invperm(sorted_indices)
@@ -167,6 +169,8 @@ and the outcome is mapped back to the original firm ordering.
     active_set =  [(i <= last_active_index) for i in rank_sorted]
     return active_set, Ã
 end;
+is_active(A_vec:: Vector{Int64}, e:: ModelEnvironment) = is_active(A_vec, e.param);
+is_active(A_vec:: Vector{Int64}, m:: DSCIModel) = is_active(A_vec, m.env.param);
 
 
 
@@ -217,7 +221,7 @@ This corresponds to the equilibrium expression
 - The active set satisfies the internal and external consistency conditions
   defined in the participation threshold characterization.
 """
-@param_forward function market_share(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Vector{Float64}, Float64, Int64}
+function market_share(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Vector{Float64}, Float64, Int64}
     share_vec = zeros(length(A_vec))
     active_vec, Ã = is_active(A_vec, p)
     ñ = sum(active_vec)
@@ -230,6 +234,8 @@ This corresponds to the equilibrium expression
     end
     return share_vec, Ã, ñ
 end;
+market_share(A_vec:: Vector{Int64}, e:: ModelEnvironment) = market_share(A_vec, e.param);
+market_share(A_vec:: Vector{Int64}, m:: DSCIModel) = market_share(A_vec, m.env.param);
 
 
 
@@ -275,13 +281,14 @@ scaled by the endogenous number of active firms.
   participation through `ñ`.
 - Shares of inactive firms are zero and therefore do not affect the HHI.
 """
-@param_forward function competition_index(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Float64, Vector{Float64}, Float64, Int64}
+function competition_index(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Float64, Vector{Float64}, Float64, Int64}
     share_vec, Ã, ñ = market_share(A_vec, p)
     HHI = sum(share_vec .^ 2) 
     result = (p.σ / (ñ - p.σ)) * (1 - p.σ * HHI)
     return result, share_vec, Ã, ñ
 end;
-
+competition_index(A_vec:: Vector{Int64}, e:: ModelEnvironment) = competition_index(A_vec, e.param);
+competition_index(A_vec:: Vector{Int64}, m:: DSCIModel) = competition_index(A_vec, m.env.param);
 
 """
     adjusted_market_share(A_vec::Vector{Int64}, p::ModelParameters)
@@ -322,7 +329,7 @@ rescaled by an endogenous factor depending on market structure.
 - The adjustment amplifies dispersion by squaring equilibrium shares and
   rescales them using the endogenous competition index.
 """
-@param_forward function adjusted_market_share(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Vector{Float64}, Float64, Float64, Int64}
+function adjusted_market_share(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Vector{Float64}, Float64, Float64, Int64}
     K, share_vec, Ã, ñ = competition_index(A_vec, p) 
 
     coef = (p.σ^2) / (ñ * K)
@@ -331,5 +338,5 @@ rescaled by an endogenous factor depending on market structure.
     
     return adjusted_shares, K, Ã, ñ
 end;
-
-Ã
+adjusted_market_share(A_vec:: Vector{Int64}, e:: ModelEnvironment) = adjusted_market_share(A_vec, e.param);
+adjusted_market_share(A_vec:: Vector{Int64}, m:: DSCIModel) = adjusted_market_share(A_vec, m.env.param);

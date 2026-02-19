@@ -35,11 +35,13 @@ where `ñ` is the number of active firms and `σ` is the competition parameter.
 # Returns
 - `Vector{Float64}`: Vector of real dividends for each firm.
 """
-@param_forward function calculate_dividends(l_vec::Vector{Float64}, s̃_vec:: Vector{Float64}, Ã:: Float64, ñ:: Int64, p:: ModelParameters) 
+function calculate_dividends(l_vec::Vector{Float64}, s̃_vec:: Vector{Float64}, Ã:: Float64, ñ:: Int64, p:: ModelParameters) 
     Lᴾ = 1 - sum(l_vec)
     d_vec = ((s̃_vec .* Lᴾ) .- ((ñ - p.σ) / ñ) .* l_vec) .* Ã
     return d_vec
 end;
+calculate_dividends(l_vec::Vector{Float64}, s̃_vec:: Vector{Float64}, Ã:: Float64, ñ:: Int64, e:: ModelEnvironment) = calculate_dividends(l_vec, s̃_vec, Ã, ñ, e.param);
+calculate_dividends(l_vec::Vector{Float64}, s̃_vec:: Vector{Float64}, Ã:: Float64, ñ:: Int64, m:: DSCIModel) = calculate_dividends(l_vec, s̃_vec, Ã, ñ, m.env.param);
 
 
 """
@@ -102,12 +104,17 @@ at the firm level (`l_vec`) or in aggregate (`Lᴿ`).
 - The expression scales production by both market structure (`K`, `ñ`)
   and average productivity (`Ã`).
 """
-@param_forward function calculate_consumption(l_vec::Vector{Float64}, K:: Float64, Ã:: Float64, ñ:: Int64, p:: ModelParameters):: Float64
+function calculate_consumption(l_vec::Vector{Float64}, K:: Float64, Ã:: Float64, ñ:: Int64, p:: ModelParameters):: Float64
     Lᴾ = 1.0 - sum(l_vec)
     return (p.σ / ñ) * (Lᴾ / K) * Ã
 end;
+calculate_consumption(l_vec::Vector{Float64}, K:: Float64, Ã:: Float64, ñ:: Int64, e:: ModelEnvironment) = calculate_consumption(l_vec, K, Ã, ñ, e.param);
+calculate_consumption(l_vec::Vector{Float64}, K:: Float64, Ã:: Float64, ñ:: Int64, m:: DSCIModel) = calculate_consumption(l_vec, K, Ã, ñ, m.env.param);
 
-@param_forward function calculate_consumption(Lᴿ::Float64, K:: Float64, Ã:: Float64, ñ:: Int64, p:: ModelParameters):: Float64
+
+function calculate_consumption(Lᴿ::Float64, K:: Float64, Ã:: Float64, ñ:: Int64, p:: ModelParameters):: Float64
     Lᴾ = 1.0 - Lᴿ
     return (p.σ / ñ) * (Lᴾ / K) * Ã
 end;
+calculate_consumption(Lᴿ::Float64, K:: Float64, Ã:: Float64, ñ:: Int64, e:: ModelEnvironment) = calculate_consumption(Lᴿ, K, Ã, ñ, e.param);
+calculate_consumption(Lᴿ::Float64, K:: Float64, Ã:: Float64, ñ:: Int64, m:: DSCIModel) = calculate_consumption(Lᴿ, K, Ã, ñ, m.env.param);

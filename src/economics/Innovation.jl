@@ -38,7 +38,7 @@ In all cases except `"ZERO"`, the probability is clamped to the interval `[0, 1]
 - The function guarantees that probabilities lie in `[0, 1]`.
 - Under `"CONS"` and `"ZERO"`, innovation is independent of R&D labor.
 """
-@param_forward function innovation_success_prob(l:: Float64, p:: ModelParameters)
+function innovation_success_prob(l:: Float64, p:: ModelParameters)
     if p.PROB == "SQRT"
         return clamp(sqrt(l * p.α), 0.0, 1.0)
     elseif p.PROB == "EXP"
@@ -53,3 +53,5 @@ In all cases except `"ZERO"`, the probability is clamped to the interval `[0, 1]
         error("Unknown PROB: $(p.PROB)")
     end
 end;
+innovation_success_prob(l:: Float64, e:: ModelEnvironment) = innovation_success_prob(l, e.param);
+innovation_success_prob(l:: Float64, m:: DSCIModel) = innovation_success_prob(l, m.env);

@@ -22,10 +22,12 @@ end;
 
 Iterator over all innovation outcome vectors.
 """
-@param_forward function get_transition_states(p:: ModelParameters)
+function get_transition_states(p:: ModelParameters)
     base_iter = Iterators.product(ntuple(_ -> [0, 1], p.n)...)
     return (collect(t) for t in base_iter)
 end;
+get_transition_states(e:: ModelEnvironment) = get_transition_states(e.param);
+get_transition_states(m:: DSCIModel) = get_transition_states(m.env.param);
 
 
 """
