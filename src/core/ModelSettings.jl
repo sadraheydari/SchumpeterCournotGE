@@ -24,9 +24,7 @@ mutable struct ModelSettings
     policy_grid_j:: Array{Float64, 2} 
     
     # operational parameters 
-    max_iter_PF_solver:: Int64 
     max_iter_PF_update:: Int64 
-    tol_PF_solver:: Float64 
     tol_PF_update:: Float64 
     clamp_rate_PF_solver:: Float64 
     clamp_rate_PF_update:: Float64 

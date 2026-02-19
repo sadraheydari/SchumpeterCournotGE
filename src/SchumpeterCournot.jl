@@ -11,7 +11,6 @@ using Random
 using Optim
 using Base.Threads
 using Combinatorics
-using DataStructures
 using Printf
 using JSON3
 using Dates
