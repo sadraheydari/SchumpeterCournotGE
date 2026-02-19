@@ -42,20 +42,22 @@ include("solver/PolicyEvaluation.jl")
 include("solver/PolicyImprovement.jl")
 include("solver/PFI.jl")
 
+include("analysis/RelativePolicy.jl")
 
 # ============================================================
 # Public API
 # ============================================================
 
-export ModelParameters,
-       ModelEnvironment,
-       ModelSettings,
-       DSCIModel,
-       solve_PFI!,
-       solve_values!,
-       update_policy!,
-       save_plot,
-       save_model,
-       load_model
+export  ModelParameters,
+        ModelEnvironment,
+        ModelSettings,
+        DSCIModel,
+        solve_PFI!,
+        solve_values!,
+        update_policy!,
+        save_plot,
+        save_model,
+        load_model,
+        policy_by_relative_state
 
 end;
