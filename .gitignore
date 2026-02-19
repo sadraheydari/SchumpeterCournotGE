@@ -12,7 +12,7 @@
 .DS_Store
 
 # Your local work
-dev/
+experiments/
 output/
 test/
 
