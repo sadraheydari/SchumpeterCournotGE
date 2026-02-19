@@ -1,0 +1,24 @@
+name = "SchumpeterCournot"
+uuid = "2a9203b3-6126-4498-9280-ed26afa298f2"
+version = "0.1.0"
+authors = ["M. Sadra Heydari"]
+
+[deps]
+Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
+DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Optim = "429524aa-4258-5aef-a3af-852621145aeb"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+
+[compat]
+Combinatorics = "1.1.0"
+DataStructures = "0.19.3"
+LinearAlgebra = "1.12.0"
+Optim = "2.0.1"
+Printf = "1.11.0"
+Random = "1.11.0"
+SparseArrays = "1.12.0"
+Statistics = "1.11.1"

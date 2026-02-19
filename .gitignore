@@ -1,0 +1,20 @@
+# Julia build artifacts
+*.jl.cov
+*.jl.*
+*.so
+*.dylib
+*.dll
+
+# VSCode
+.vscode/
+
+# OS files
+.DS_Store
+
+# Your local work
+dev/
+output/
+test/
+
+# Optional (choose one approach below)
+Manifest.toml
