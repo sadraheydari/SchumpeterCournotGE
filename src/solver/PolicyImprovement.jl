@@ -41,7 +41,7 @@ function update_policy!(model:: DSCIModel)
 
                     term_value = 0.0
                     for (_, A_idx, v_idx, weighted_sdf) in get_transition_contributions(model, A_new, L_old, current_market_vars)
-                        term_value += weighted_sdf * model.states.V_grid[A_idx, v_idx]
+                        term_value += weighted_sdf * model.state.V_grid[A_idx, v_idx]
                     end
                     expected_val += term_value * pr
                 end
@@ -51,7 +51,7 @@ function update_policy!(model:: DSCIModel)
 
             # optimize the objective function
             result = optimize(objective, 0.0, model.env.l_max)
-            model.states.policy_grid[A_old_idx, v_old_idx] = result.minimizer
+            model.state.policy_grid[A_old_idx, v_old_idx] = result.minimizer
         end
     end
 end;

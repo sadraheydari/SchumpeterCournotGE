@@ -90,7 +90,7 @@ function get_transition_contributions(
     L_old:: Float64, 
     current_market_vars:: Tuple{Float64, Float64, Int}
     )
-    τ_max = model.τ_max
+    τ_max = model.env.τ_max
     (Kₜ, Ãₜ, ñₜ) = current_market_vars
 
     # Extrapolte the n+1 state using a linear approximation 

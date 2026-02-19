@@ -15,6 +15,7 @@
 experiments/
 output/
 test/
+saved_models/
 
 # Optional (choose one approach below)
 Manifest.toml
