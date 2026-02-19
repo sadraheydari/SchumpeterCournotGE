@@ -1,45 +1,45 @@
-function model_to_dict(model::ModelSettings)
+function model_to_dict(model::DSCIModel)
 
     return Dict(
         "Timestamp" => string(Dates.now()),
 
         "ModelParameters" => Dict(
-            "n" => model.param.n,
-            "sigma" => model.param.σ,
-            "beta" => model.param.β,
-            "gamma" => model.param.γ,
-            "alpha" => model.param.α,
-            "PROB" => model.param.PROB
+            "n" => model.env.param.n,
+            "sigma" => model.env.param.σ,
+            "beta" => model.env.param.β,
+            "gamma" => model.env.param.γ,
+            "alpha" => model.env.param.α,
+            "PROB" => model.env.param.PROB
         ),
 
-        "AlgorithmicParameters" => Dict(
-            "tau_max" => model.τ_max,
-            "l_max" => model.l_max,
-            "tol_PF_update" => model.tol_PF_update,
-            "tol_PF_solver" => model.tol_PF_solver,
-            "max_iter_PF_solver" => model.max_iter_PF_solver,
-            "max_iter_PF_update" => model.max_iter_PF_update,
-            "clamp_rate_PF_solver" => model.clamp_rate_PF_solver,
-            "clamp_rate_PF_update" => model.clamp_rate_PF_update,
-            "sdf_relaxer" => model.sdf_relaxer
+        "ModelEnvironment" => Dict(
+            "tau_max" => model.env.τ_max,
+            "l_max" => model.env.l_max
+        ),
+
+        "ModelSettings" => Dict(
+            "max_iter_update" => model.settings.max_iter_update,
+            "tol_update" => model.settings.tol_update,
+            "clamp_rate_update" => model.settings.clamp_rate_update,
+            "sdf_relaxer" => model.settings.sdf_relaxer
         )
     )
 end;
 
 
 
-function build_footer_strings(model::ModelSettings)
+function build_footer_strings(model::DSCIModel)
 
     # -----------------------------
     # Economic parameters
     # -----------------------------
     econ = [
-        "n=$(model.param.n)",
-        @sprintf("σ=%.3g", model.param.σ),
-        @sprintf("β=%.3g", model.param.β),
-        @sprintf("γ=%.3g", model.param.γ),
-        @sprintf("α=%.3g", model.param.α),
-        "PROB=$(model.param.PROB)"
+        "n=$(model.env.param.n)",
+        @sprintf("σ=%.3g", model.env.param.σ),
+        @sprintf("β=%.3g", model.env.param.β),
+        @sprintf("γ=%.3g", model.env.param.γ),
+        @sprintf("α=%.3g", model.env.param.α),
+        "PROB=$(model.env.param.PROB)"
     ]
 
     econ_line = join(econ, "   ")
@@ -48,10 +48,10 @@ function build_footer_strings(model::ModelSettings)
     # Algorithmic parameters
     # -----------------------------
     algo = [
-        "τ=$(model.τ_max)",
-        @sprintf("l_max=%.3g", model.l_max),
-        @sprintf("tol=%.1e", model.tol_PF_update),
-        @sprintf("sdf=%.3g", model.sdf_relaxer)
+        "τ=$(model.env.τ_max)",
+        @sprintf("l_max=%.3g", model.env.l_max),
+        @sprintf("tol=%.1e", model.settings.tol_PF_update),
+        @sprintf("sdf=%.3g", model.settings.sdf_relaxer)
     ]
 
     algo_line = join(algo, "   ")
@@ -62,7 +62,7 @@ end;
 
 
 
-function build_footer_plot(model::ModelSettings; fsize=7)
+function build_footer_plot(model::DSCIModel; fsize=7)
 
     econ_line, algo_line = build_footer_strings(model)
 
@@ -87,7 +87,7 @@ function build_footer_plot(model::ModelSettings; fsize=7)
 end;
 
 
-function combine_with_footer(plt, model::ModelSettings; fsize=7)
+function combine_with_footer(plt, model::DSCIModel; fsize=7)
 
     footer = build_footer_plot(model; fsize=fsize)
 
@@ -114,7 +114,7 @@ end;
 
 function save_plot(
     plt,
-    model::ModelSettings,
+    model::DSCIModel,
     path::AbstractString,
     plot_name::AbstractString;
     ext::AbstractString = "pdf",

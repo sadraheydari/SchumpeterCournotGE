@@ -40,12 +40,12 @@ end;
 Compute the equilibrium participation threshold using a bisection procedure.
 
 For a given sorted productivity profile `A_vec_sorted`, the function identifies
-the size of the equilibrium active set `ñ` and the associated harmonic mean `Ã`
+the size of the equilibrium active set `ñ` and the associated harmonic mean `Ã`
 such that the implied participation threshold is satisfied.
 
 The algorithm implements a recursive bisection search over the index interval
 `[start_index, end_index]`. At each step, it checks whether a candidate active
-set of size `ñ` satisfies the participation condition and narrows the search
+set of size `ñ` satisfies the participation condition and narrows the search
 interval accordingly. The procedure exploits the monotonicity induced by the
 sorted productivity profile.
 
@@ -61,11 +61,11 @@ A set `𝒩ᴾ ⊆ 𝒩` is an equilibrium active set if and only if:
        Aᵢ < ((|𝒩ᴾ| + 1 - σ) / (|𝒩ᴾ| + 1)) · Ā(𝒩ᴾ ∪ {i}).
 
 Under a sorted productivity profile, the equilibrium active set is characterized
-by a cutoff index `ñ`, and the function returns:
+by a cutoff index `ñ`, and the function returns:
 
-- `ñ`: the equilibrium number of active firms,
-- `Ã`: the harmonic mean of productivities among the active agents,
-         i.e. `Ã = harmonic_mean(A_vec_sorted[1:ñ])`.
+- `ñ`: the equilibrium number of active firms,
+- `Ã`: the harmonic mean of productivities among the active agents,
+         i.e. `Ã = harmonic_mean(A_vec_sorted[1:ñ])`.
 
 # Arguments
 - `A_vec_sorted::Vector{Float64}`: Productivity profile sorted in ascending order.
@@ -75,15 +75,15 @@ by a cutoff index `ñ`, and the function returns:
     - `σ`: risk aversion.
 
 # Returns
-- `Tuple{Int64, Float64}`: `(ñ, Ã)` where `ñ` is the equilibrium active set
-  size and `Ã` is the corresponding harmonic mean productivity.
+- `Tuple{Int64, Float64}`: `(ñ, Ã)` where `ñ` is the equilibrium active set
+  size and `Ã` is the corresponding harmonic mean productivity.
 
 # Assumptions
 - `A_vec_sorted` is sorted in ascending order.
 - `1 ≤ start_index ≤ end_index ≤ length(A_vec_sorted)`.
 - All relevant productivity values are positive.
 """
-function find_active_threshold(
+@param_forward function find_active_threshold(
         A_vec_sorted:: Vector{Float64},
         start_index:: Int64, 
         end_index:: Int64,
@@ -123,6 +123,7 @@ function find_active_threshold(
 end;
 
 
+
 """
     is_active(A_vec::Vector{Int64}, p::ModelParameters)
         -> Tuple{Vector{Bool}, Float64}
@@ -154,9 +155,9 @@ and the outcome is mapped back to the original firm ordering.
 - `Tuple{Vector{Bool}, Float64}`:
     - `active_set::Vector{Bool}`: Boolean vector where `active_set[i] = true`
       if firm `i` is active in equilibrium.
-    - `Ã::Float64`: Harmonic mean productivity among active firms.
+    - `Ã::Float64`: Harmonic mean productivity among active firms.
 """
-function is_active(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Vector{Bool}, Float64} 
+@param_forward function is_active(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Vector{Bool}, Float64} 
     
     sorted_indices = sortperm(A_vec, rev=true)
     rank_sorted = invperm(sorted_indices)
@@ -183,17 +184,17 @@ productivity
 where `γ` is the technology growth factor per innovation step. The set of
 active firms is determined endogenously using `is_active`.
 
-Let `ñ` denote the number of active firms and `Ã` the harmonic mean
+Let `ñ` denote the number of active firms and `Ã` the harmonic mean
 productivity among them. The market share of firm `i` is given by
 
     sᵢ(A) =
-        (1/σ) * [1 - ((ñ - σ)/ñ) * (Ã / Aᵢ)]   if i is active,
+        (1/σ) * [1 - ((ñ - σ)/ñ) * (Ã / Aᵢ)]   if i is active,
         0                                         otherwise.
 
 This corresponds to the equilibrium expression
 
     sᵢ(𝐀ₜ) =
-        (1/σ) [1 - ((ñ - σ)/ñ)(Ãₜ / Aᵢ,ₜ)]  for i ∈ 𝒩ᵖₜ,
+        (1/σ) [1 - ((ñ - σ)/ñ)(Ãₜ / Aᵢ,ₜ)]  for i ∈ 𝒩ᵖₜ,
         0                                       otherwise.
 
 # Arguments
@@ -207,8 +208,8 @@ This corresponds to the equilibrium expression
 - `Tuple{Vector{Float64}, Float64, Int64}`:
     - `share_vec::Vector{Float64}`: Equilibrium market shares for all firms
       (zero for inactive firms).
-    - `Ã::Float64`: Harmonic mean productivity among active firms.
-    - `ñ::Int64`: Number of active firms.
+    - `Ã::Float64`: Harmonic mean productivity among active firms.
+    - `ñ::Int64`: Number of active firms.
 
 # Notes
 - Market shares are strictly positive only for firms in the equilibrium
@@ -216,7 +217,7 @@ This corresponds to the equilibrium expression
 - The active set satisfies the internal and external consistency conditions
   defined in the participation threshold characterization.
 """
-function market_share(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Vector{Float64}, Float64, Int64}
+@param_forward function market_share(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Vector{Float64}, Float64, Int64}
     share_vec = zeros(length(A_vec))
     active_vec, Ã = is_active(A_vec, p)
     ñ = sum(active_vec)
@@ -243,15 +244,15 @@ Given firms’ positions on the quality ladder, the function first computes
 equilibrium market shares using `market_share`, obtaining:
 
 - `share_vec`: equilibrium shares,
-- `Ã`: harmonic mean productivity among active firms,
-- `ñ`: number of active firms.
+- `Ã`: harmonic mean productivity among active firms,
+- `ñ`: number of active firms.
 
 Let `HHI = ∑ᵢ sᵢ²` denote the Herfindahl–Hirschman index of concentration.
 The adjusted competition–concentration index is computed using the
 alternative representation
 
     𝒦(𝐀) =
-        (σ / (ñ - σ)) * (1 - σ * HHI).
+        (σ / (ñ - σ)) * (1 - σ * HHI).
 
 This expression highlights that 𝒦(𝐀) is a monotone transformation of the HHI
 scaled by the endogenous number of active firms.
@@ -266,15 +267,15 @@ scaled by the endogenous number of active firms.
 - `Tuple{Float64, Vector{Float64}, Float64, Int64}`:
     - `K_value::Float64`: Adjusted competition–concentration index 𝒦(𝐀).
     - `share_vec::Vector{Float64}`: Equilibrium market shares.
-    - `Ã::Float64`: Harmonic mean productivity among active firms.
-    - `ñ::Int64`: Number of active firms.
+    - `Ã::Float64`: Harmonic mean productivity among active firms.
+    - `ñ::Int64`: Number of active firms.
 
 # Notes
 - 𝒦(𝐀) decreases with concentration (HHI) and incorporates endogenous
-  participation through `ñ`.
+  participation through `ñ`.
 - Shares of inactive firms are zero and therefore do not affect the HHI.
 """
-function competition_index(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Float64, Vector{Float64}, Float64, Int64}
+@param_forward function competition_index(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Float64, Vector{Float64}, Float64, Int64}
     share_vec, Ã, ñ = market_share(A_vec, p)
     HHI = sum(share_vec .^ 2) 
     result = (p.σ / (ñ - p.σ)) * (1 - p.σ * HHI)
@@ -293,11 +294,11 @@ The function first evaluates the competition index `K` and equilibrium
 market shares `sᵢ` using `competition_index`. It then applies the
 transformation
 
-    s̃ᵢ = (σ² / (ñ * K)) * sᵢ²,
+    s̃ᵢ = (σ² / (ñ * K)) * sᵢ²,
 
 where:
 - `σ` is the competition parameter,
-- `ñ` is the number of active firms,
+- `ñ` is the number of active firms,
 - `K` is the adjusted competition–concentration index.
 
 Thus, adjusted shares are proportional to squared equilibrium shares,
@@ -313,15 +314,15 @@ rescaled by an endogenous factor depending on market structure.
 - `Tuple{Vector{Float64}, Float64, Int64}`:
     - `adjusted_shares::Vector{Float64}`: Adjusted market shares.
     - `K::Float64`: Adjusted competition–concentration index 𝒦(𝐀).
-    - `Ã::Float64`: Harmonic mean productivity among active firms.
-    - `ñ::Int64`: Number of active firms.
+    - `Ã::Float64`: Harmonic mean productivity among active firms.
+    - `ñ::Int64`: Number of active firms.
 
 # Notes
 - Inactive firms have zero equilibrium shares and therefore zero adjusted shares.
 - The adjustment amplifies dispersion by squaring equilibrium shares and
   rescales them using the endogenous competition index.
 """
-function adjusted_market_share(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Vector{Float64}, Float64, Float64, Int64}
+@param_forward function adjusted_market_share(A_vec:: Vector{Int64}, p:: ModelParameters):: Tuple{Vector{Float64}, Float64, Float64, Int64}
     K, share_vec, Ã, ñ = competition_index(A_vec, p) 
 
     coef = (p.σ^2) / (ñ * K)
@@ -330,3 +331,5 @@ function adjusted_market_share(A_vec:: Vector{Int64}, p:: ModelParameters):: Tup
     
     return adjusted_shares, K, Ã, ñ
 end;
+
+Ã

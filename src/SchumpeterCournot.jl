@@ -15,6 +15,7 @@ using Printf
 using JSON3
 using Dates
 using Plots
+using JLD2
 
 
 # ============================================================
@@ -35,6 +36,7 @@ include("bellman/BellmanSystem.jl")
 
 include("utils/ProgressBar.jl")
 include("utils/PlotSaving.jl")
+include("utils/SaveModel.jl")
 
 include("solver/PolicyEvaluation.jl")
 include("solver/PolicyImprovement.jl")
@@ -45,11 +47,15 @@ include("solver/PFI.jl")
 # Public API
 # ============================================================
 
-export ModelSettings,
-       ModelParameters,
+export ModelParameters,
+       ModelEnvironment,
+       ModelSettings,
+       DSCIModel,
        solve_PFI!,
        solve_values!,
        update_policy!,
-       save_plot
+       save_plot,
+       save_model,
+       load_model
 
 end;
