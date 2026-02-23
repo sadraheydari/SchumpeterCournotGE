@@ -50,7 +50,7 @@ function build_footer_strings(model::DSCIModel)
     algo = [
         "τ=$(model.env.τ_max)",
         @sprintf("l_max=%.3g", model.env.l_max),
-        @sprintf("tol=%.1e", model.settings.tol_PF_update),
+        @sprintf("tol=%.1e", model.settings.tol_update),
         @sprintf("sdf=%.3g", model.settings.sdf_relaxer)
     ]
 
