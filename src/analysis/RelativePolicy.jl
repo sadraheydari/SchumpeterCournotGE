@@ -21,12 +21,12 @@ function policy_by_relative_state(model::DSCIModel; debug::Bool=false)
     tuple_to_idx = idx_map.tuple_to_idx
 
     # Cartesian loop over all d combinations
-    for I in CartesianIndices(p_grid)
+    @threads for I in CartesianIndices(p_grid)
 
         # Extract d vector
         d_vec = [d_states[i] for i in Tuple(I)]
 
-        # Enforce sorted state constraint (A_vec must be sorted)
+        # Enforsce sorted state constraint (A_vec must be sorted)
         # Equivalent to your `if d_i > d_j continue`
         if !issorted(d_vec)
             continue
@@ -52,11 +52,16 @@ function policy_by_relative_state(model::DSCIModel; debug::Bool=false)
             end
         end
 
+        debug && println("  Collected policies: ", p_vals)
+
         if !isempty(p_vals)
             p_val = median(p_vals)
             idx_tuple = Tuple(I)
+            debug && println("  median=", p_val)
+            debug && println("  Assigning to indices: ", unique(permutations(idx_tuple)))
             for perm in unique(permutations(idx_tuple))
-                p_grid[CartesianIndex(perm)] = p_val
+                debug && println("    Assigning p_grid[", perm, "] = ", p_val) 
+                p_grid[perm...] = p_val
             end
             debug && println("  median=", p_val)
         end
