@@ -12,7 +12,7 @@
 .DS_Store
 
 # Your local work
-experiments/
+dev/
 output/
 test/
 saved_models/
