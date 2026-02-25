@@ -22,6 +22,10 @@ function model_to_dict(model::DSCIModel)
             "tol_update" => model.settings.tol_update,
             "clamp_rate_update" => model.settings.clamp_rate_update,
             "sdf_relaxer" => model.settings.sdf_relaxer
+        ),
+
+        "SolverState" => Dict(
+            "is_converged" => model.state.is_converged
         )
     )
 end;
