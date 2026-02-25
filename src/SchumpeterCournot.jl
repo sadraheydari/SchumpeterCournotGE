@@ -22,9 +22,8 @@ using JLD2
 # Internal includes
 # ============================================================
 
-include("core/ModelParameters.jl")
 include("core/StateIndex.jl")
-include("core/ModelSettings.jl")
+include("core/ModelStructs.jl")
 
 include("economics/Market.jl")
 include("economics/Payoffs.jl")
