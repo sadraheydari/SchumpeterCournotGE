@@ -32,6 +32,7 @@ function solve_PFI!(model:: DSCIModel; showprgs=true)
 
         if diff < model.settings.tol_update
             showprgs && finish!(tracker, iter, diff)
+            model.state.is_converged = true
             break
         end
 
