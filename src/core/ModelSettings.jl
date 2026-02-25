@@ -1,6 +1,3 @@
-
-
-
 struct ModelEnvironment
     param::ModelParameters
     τ_max::Int
@@ -21,6 +18,7 @@ mutable struct SolverState
     V_grid::Matrix{Float64}
     policy_grid::Matrix{Float64}
     policy_grid_j::Matrix{Float64}
+    is_converged::Bool
 end
 
 
@@ -52,7 +50,12 @@ function DSCIModel(;
     settings = SolverSettings(max_iter_update, tol_update, clamp_rate_update, sdf_relaxer)
     
     dimentions = (τ_max, length(idx_map.idx_to_tuple))
-    state = SolverState(zeros(dimentions...), zeros(dimentions...), ones(dimentions...) * initial_pj)
+    state = SolverState(
+        zeros(dimentions...), 
+        zeros(dimentions...), 
+        ones(dimentions...) * initial_pj,
+        false
+    )
     
     return DSCIModel(env, settings, state)
 end;
