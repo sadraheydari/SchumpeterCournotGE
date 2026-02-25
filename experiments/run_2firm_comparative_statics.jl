@@ -37,8 +37,10 @@ model = DSCIModel(
     ),
     τ_max = TAU_MAX,
     l_max = L_MAX,
-    clamp_rate_update = 0.1,
-    sdf_relaxer = 1.0
+    clamp_rate_update = 0.05,
+    sdf_relaxer = 1.0,
+    initial_pj = 0.0,
+    tol_update = 1e-6
 )
 
 # Helper function to update structural environment in-place
