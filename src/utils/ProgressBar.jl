@@ -26,6 +26,7 @@ This tracker assumes geometric convergence.
 If convergence is irregular, ETA may fluctuate.
 """
 mutable struct ProgressBar
+    max_iter::Int
     tol::Float64
     log_tol::Float64
     log_diff0::Float64
@@ -59,7 +60,7 @@ Create and initialize a `ProgressBar`.
 
 Must be called after first `diff` is computed.
 """
-function ProgressBar(tol::Float64; diff0::Float64=Inf, bar_length::Int=40, color::String=GREEN)
+function ProgressBar(max_iter::Int, tol::Float64; diff0::Float64=Inf, bar_length::Int=40, color::String=GREEN)
 
     logd = log(diff0)
 
@@ -68,6 +69,7 @@ function ProgressBar(tol::Float64; diff0::Float64=Inf, bar_length::Int=40, color
     bar_length = max(10, min(bar_length, cols - otput_len))
 
     return ProgressBar(
+        max_iter,
         tol,
         log(tol),
         logd,
@@ -132,38 +134,60 @@ function update!(pt::ProgressBar, diff::Float64, iter::Int)
     pt.log_diff0 = max(pt.log_diff0, log_diff) # update initial log diff if it increases
 
     # ----- progress in log space
-    progress = 1 - (log_diff - pt.log_tol) /
+    progress_tol = 1 - (log_diff - pt.log_tol) /
                    (pt.log_diff0 - pt.log_tol)
 
-    progress = clamp(progress, 0.0, 1.0)
+    progress_tol = clamp(progress_tol, 0.0, 1.0)
 
-    filled = round(Int, progress * pt.bar_length)
-    empty  = pt.bar_length - filled
+    #----- progress in iteration space
+    progress_iter = iter / pt.max_iter
+    progress_iter = clamp(progress_iter, 0.0, 1.0)
 
-    bar = "[ " *
+    complete_progress = min(progress_tol, progress_iter)
+    max_progress = max(progress_tol, progress_iter)
+
+    filled = round(Int, complete_progress * pt.bar_length)
+    half_filled = round(Int, (max_progress - complete_progress) * pt.bar_length)
+    empty  = pt.bar_length - filled - half_filled
+
+    halph_bar = progress_iter < progress_tol ? "▀" : "▄"
+    bar = " " *
           repeat("█", filled) *
-          repeat("-", empty) *
-          " ]"
+          repeat(halph_bar, half_filled) *
+          repeat(" ", empty) *
+          " "
 
     # ----- remaining time estimation
     elapsed = time() - pt.start_time
-    avg_time = elapsed / progress
-    eta = (1 - progress) * avg_time
-    eta = max(eta, 0.0) # avoid negative ETA if progress is 1
+    avg_time_iter = elapsed / progress_iter
+    avg_time_tol = elapsed / progress_tol
+
+    eta_iter = (1 - progress_iter) * avg_time_iter
+    eta_tol = (1 - progress_tol) * avg_time_tol
+
+    eta = min(eta_iter, max(eta_tol, 0.0)) 
 
     # ----- color selection
     color = pt.color
 
-    percent = round(progress * 100, digits=1)
+    percent = round(progress_tol * 100, digits=1)
 
     diff_str = @sprintf("%.3e", diff)
     eta_str = format_eta(eta)
+    percent_str = @sprintf("%5.1f%%", percent)
+    iter_str = @sprintf("%3d", iter)
+
+    eta_color = if eta_tol < eta_iter
+        pt.color
+    else
+        CYAN
+    end
     print("\r\033[K",
-          CYAN, "Iter $iter ",
+          CYAN, "Iter $iter_str ",
           color, bar, " ",
-          "$percent% ",
+          "$percent_str ",
           "(diff=$diff_str)",
-          "\tETA=$eta_str")
+          eta_color,"    ETA=$eta_str")
 
     flush(stdout)
 
@@ -185,9 +209,8 @@ Prints final summary line and resets color.
 function finish!(pt::ProgressBar, iter::Int, diff::Float64)
     diff_str = @sprintf("%.3e", diff)
     eta_str = format_eta(time() - pt.start_time)
-    # println()
-    println("\r\033[K",
-            GREEN,
+    println("\r\033[K")
+    println(GREEN,
             "✓ Converged in ",
             YELLOW, "$iter",
             GREEN, " iterations after ",

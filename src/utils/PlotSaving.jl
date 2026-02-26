@@ -1,7 +1,7 @@
 function model_to_dict(model::DSCIModel)
 
     return Dict(
-        "Timestamp" => string(Dates.now()),
+        "Timestamp" => Base.string(Dates.now()),
 
         "ModelParameters" => Dict(
             "n" => model.env.param.n,
@@ -21,7 +21,8 @@ function model_to_dict(model::DSCIModel)
             "max_iter_update" => model.settings.max_iter_update,
             "tol_update" => model.settings.tol_update,
             "clamp_rate_update" => model.settings.clamp_rate_update,
-            "sdf_relaxer" => model.settings.sdf_relaxer
+            "sdf_relaxer" => model.settings.sdf_relaxer,
+            "solver_value_scaling" => convert_to_string(model.settings.value_scaling)
         ),
 
         "SolverState" => Dict(
@@ -55,7 +56,8 @@ function build_footer_strings(model::DSCIModel)
         "τ=$(model.env.τ_max)",
         @sprintf("l_max=%.3g", model.env.l_max),
         @sprintf("tol=%.1e", model.settings.tol_update),
-        @sprintf("sdf=%.3g", model.settings.sdf_relaxer)
+        @sprintf("sdf=%.3g", model.settings.sdf_relaxer),
+        "scaling=$(convert_to_string(model.settings.value_scaling))"
     ]
 
     algo_line = join(algo, "   ")

@@ -16,7 +16,7 @@ Algorithm:
 function solve_PFI!(model:: DSCIModel; showprgs=true)
 
     tracker = showprgs ?
-        ProgressBar(model.settings.tol_update) :
+        ProgressBar(model.settings.max_iter_update,model.settings.tol_update) :
         nothing
 
     for iter in 1:model.settings.max_iter_update
