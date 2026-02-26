@@ -23,6 +23,7 @@ using JLD2
 # ============================================================
 
 include("core/StateIndex.jl")
+include("core/ScaleMode.jl")
 include("core/ModelStructs.jl")
 
 include("economics/Market.jl")
