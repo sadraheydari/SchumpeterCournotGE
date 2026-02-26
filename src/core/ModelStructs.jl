@@ -33,6 +33,18 @@ struct SolverSettings
     tol_update::Float64
     clamp_rate_update::Float64
     sdf_relaxer::Float64
+    value_scaling::ValueScaling
+end
+
+
+function SolverSettings(
+    max_iter_update::Int,
+    tol_update::Float64,
+    clamp_rate_update::Float64,
+    sdf_relaxer::Float64,
+    value_scaling::ValueScaling = Levels()
+)
+    return SolverSettings(max_iter_update, tol_update, clamp_rate_update, sdf_relaxer, value_scaling)
 end
 
 
@@ -63,13 +75,14 @@ function DSCIModel(;
     tol_update = 1e-5,
     clamp_rate_update = 0.5,
     sdf_relaxer = 1.0,
-    l_max = 0.3
+    l_max = 0.3,
+    value_scaling = Levels()
 )
     idx_map = build_lookup(param.n - 1, τ_max)
     
     env = ModelEnvironment(param, τ_max, idx_map, l_max)
     
-    settings = SolverSettings(max_iter_update, tol_update, clamp_rate_update, sdf_relaxer)
+    settings = SolverSettings(max_iter_update, tol_update, clamp_rate_update, sdf_relaxer, value_scaling)
     
     dimentions = (τ_max, length(idx_map.idx_to_tuple))
     state = SolverState(
