@@ -34,7 +34,11 @@ function construct_vf_equation_system(model:: DSCIModel)
 
             # RHS: dividends
             d_vec = calculate_dividends(l_vec, s̃ₜ, Ãₜ, ñₜ, model.env.param)
-            b_vec[idx_old] = d_vec[1]
+            b_vec[idx_old] = scale_flow(
+                model.settings.value_scaling, # Scaling mode
+                d_vec[1],                     # Firm 1's dividend
+                model.env.param.γ ^ A_1       # Scale by productivity level if using detrended values
+            )
             
             # LHS: Transitions
             η_vec = [innovation_success_prob(l, model.env.param) for l in l_vec]
@@ -42,7 +46,7 @@ function construct_vf_equation_system(model:: DSCIModel)
             for transition_state in get_transition_states(model)
                 pr = calculate_transition_probability(transition_state, η_vec)
                 A_new = A_old .+ transition_state
-                for (idx_target, _, _, weighted_sdf) in get_transition_contributions(model, A_new, L_old, (Kₜ, Ãₜ, ñₜ))
+                for (idx_target, _, _, weighted_sdf) in get_transition_contributions(model, A_new, A_old, L_old, (Kₜ, Ãₜ, ñₜ))
                     i_list = push!(i_list, idx_old)
                     j_list = push!(j_list, idx_target)
                     v_list = push!(v_list, -pr * weighted_sdf)

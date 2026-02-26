@@ -48,16 +48,29 @@ include("analysis/RelativePolicy.jl")
 # Public API
 # ============================================================
 
+        # Model Parameters and Environment
 export  ModelParameters,
         ModelEnvironment,
-        ModelSettings,
+        SolverSettings,
+        SolverState,
         DSCIModel,
+
+        # Value Scaling Modes
+        ValueScaling,
+        Levels, 
+        Detrended,
+
+        # Solver Functions
         solve_PFI!,
         solve_values!,
         update_policy!,
+
+        # Utilities for saving/loading and plotting
         save_plot,
         save_model,
         load_model,
+
+        # Analysis
         policy_by_relative_state
 
 end;

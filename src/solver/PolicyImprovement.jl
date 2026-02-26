@@ -30,8 +30,12 @@ function update_policy!(model:: DSCIModel)
                 d_vec = calculate_dividends(l_vec, s̃ₜ, Ãₜ, ñₜ, model.env.param)
 
                 # Current dividends
-                expected_val = d_vec[1]
-                
+                expected_val = scale_flow(
+                    model.settings.value_scaling, # Scaling mode
+                    d_vec[1],                     # Firm 1's dividend
+                    model.env.param.γ ^ A_1       # Scale by productivity level if using detrended values
+                )
+                                
                 η_func = x -> innovation_success_prob(x, model.env.param)
                 η_vec = η_func.(l_vec)
 
@@ -40,7 +44,7 @@ function update_policy!(model:: DSCIModel)
                     A_new = A_vec .+ transition_state
 
                     term_value = 0.0
-                    for (_, A_idx, v_idx, weighted_sdf) in get_transition_contributions(model, A_new, L_old, current_market_vars)
+                    for (_, A_idx, v_idx, weighted_sdf) in get_transition_contributions(model, A_new, A_vec, L_old, current_market_vars)
                         term_value += weighted_sdf * model.state.V_grid[A_idx, v_idx]
                     end
                     expected_val += term_value * pr

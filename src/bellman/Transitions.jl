@@ -85,8 +85,9 @@ end;
 Return continuation value contributions for given innovation realization.
 """
 function get_transition_contributions(
-    model:: DSCIModel, 
-    A_new:: Vector{Int}, 
+    model:: DSCIModel,
+    A_new:: Vector{Int},
+    A_old:: Vector{Int},
     L_old:: Float64, 
     current_market_vars:: Tuple{Float64, Float64, Int}
     )
@@ -112,6 +113,12 @@ function get_transition_contributions(
         L_next = sum(l_vec_next)
 
         sdf = calculate_sdf(model, L_old, L_next, Kₜ, K_next, Ãₜ, Ã_next, ñₜ, ñ_next)
-        (idx_target, A_1, local_idx, sdf * weight)
+        scaled_sdf = scale_kernel(
+            model.settings.value_scaling, # Scaling mode
+            sdf,                          # Unscaled SDF
+            model.env.param.γ ^ A_old[1],
+            model.env.param.γ ^ pt_state[1]
+        )
+        (idx_target, A_1, local_idx, scaled_sdf * weight)
     end for (pt_state, weight) in points)
 end;
