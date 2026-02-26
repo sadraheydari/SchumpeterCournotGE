@@ -37,7 +37,7 @@ function construct_vf_equation_system(model:: DSCIModel)
             b_vec[idx_old] = scale_flow(
                 model.settings.value_scaling, # Scaling mode
                 d_vec[1],                     # Firm 1's dividend
-                model.env.param.γ ^ A_1       # Scale by productivity level if using detrended values
+                model.env.param.γ ^ (A_1 - 1) # Scale by productivity level if using detrended values
             )
             
             # LHS: Transitions

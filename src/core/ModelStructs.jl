@@ -41,10 +41,9 @@ function SolverSettings(
     max_iter_update::Int,
     tol_update::Float64,
     clamp_rate_update::Float64,
-    sdf_relaxer::Float64,
-    value_scaling::ValueScaling = Levels()
+    sdf_relaxer::Float64
 )
-    return SolverSettings(max_iter_update, tol_update, clamp_rate_update, sdf_relaxer, value_scaling)
+    return SolverSettings(max_iter_update, tol_update, clamp_rate_update, sdf_relaxer, Levels())
 end
 
 

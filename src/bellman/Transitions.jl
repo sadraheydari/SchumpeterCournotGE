@@ -116,8 +116,8 @@ function get_transition_contributions(
         scaled_sdf = scale_kernel(
             model.settings.value_scaling, # Scaling mode
             sdf,                          # Unscaled SDF
-            model.env.param.γ ^ A_old[1],
-            model.env.param.γ ^ pt_state[1]
+            model.env.param.γ ^ (A_old[1] - 1),
+            model.env.param.γ ^ (pt_state[1] - 1)
         )
         (idx_target, A_1, local_idx, scaled_sdf * weight)
     end for (pt_state, weight) in points)
