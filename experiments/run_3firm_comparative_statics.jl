@@ -11,7 +11,7 @@ const L_MAX   = 0.3
 
 baseline_params = (
     σ = 1.3, 
-    γ = 1.03, 
+    γ = 1.04, 
     β = 0.93, 
     α = 5.0
 )
@@ -40,7 +40,8 @@ model = DSCIModel(
     clamp_rate_update = 0.1,
     sdf_relaxer = 1.0,
     initial_pj = 0.0,
-    tol_update = 1e-6
+    tol_update = 1e-6,
+    value_scaling = Detrended()
 )
 
 # Helper function to update structural environment in-place
@@ -84,9 +85,10 @@ for (param_name, values) in sweeps
 
         # Save result
         if model.state.is_converged
+            continue
             save_model(model, dir="saved_models/3-firm")
         else
-            print("\r")
+            println("\r")
             @warn "Model did not converge for $param_name = $val."
         end
     end
