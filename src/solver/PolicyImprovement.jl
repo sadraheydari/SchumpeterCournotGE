@@ -8,7 +8,7 @@
 Given value function, compute optimal R&D investment
 via one-dimensional optimization at each state.
 """
-function update_policy!(model:: DSCIModel)
+function update_policy!(model:: DSCIModel; clamp:: Bool = false, clamp_rate:: Float64 = 0.2)
     τ_max = model.env.τ_max
 
     @threads for A_1 in 1:τ_max
@@ -55,7 +55,11 @@ function update_policy!(model:: DSCIModel)
 
             # optimize the objective function
             result = optimize(objective, 0.0, model.env.l_max)
-            model.state.policy_grid[A_old_idx, v_old_idx] = result.minimizer
+            optimal_l = result.minimizer
+            if clamp
+                optimal_l = clamp_rate * optimal_l + (1 - clamp_rate) * model.state.policy_grid[A_old_idx, v_old_idx]
+            end
+            model.state.policy_grid[A_old_idx, v_old_idx] = optimal_l
         end
     end
 end;
