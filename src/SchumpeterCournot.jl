@@ -55,6 +55,10 @@ export  ModelParameters,
         SolverState,
         DSCIModel,
 
+        # Actional Functions
+        get_labour_demand,
+        innovation_success_prob,
+
         # Value Scaling Modes
         ValueScaling,
         Levels, 
