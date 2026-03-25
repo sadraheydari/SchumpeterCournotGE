@@ -41,6 +41,8 @@ In all cases except `"ZERO"`, the probability is clamped to the interval `[0, 1]
 function innovation_success_prob(l:: Float64, p:: ModelParameters)
     if p.PROB == "SQRT"
         return clamp(sqrt(l * p.α), 0.0, 1.0)
+    elseif p.PROB == "SQRT-ADJ"
+        return clamp(sqrt(l * p.α + 1.0) - 1.0, 0.0, 1.0)
     elseif p.PROB == "EXP"
         return clamp(1 - exp(-l * p.α), 0.0, 1.0)
     elseif p.PROB == "LINEAR"
