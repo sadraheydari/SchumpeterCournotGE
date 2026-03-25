@@ -49,6 +49,8 @@ function innovation_success_prob(l:: Float64, p:: ModelParameters)
         return clamp(p.α, 0.0, 1.0)
     elseif p.PROB == "ZERO" 
         return 0.0
+    elseif p.PROB == "PWR"
+        return clamp(l^p.α, 0.0, 1.0)
     else
         error("Unknown PROB: $(p.PROB)")
     end
