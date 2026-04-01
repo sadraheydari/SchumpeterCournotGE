@@ -22,7 +22,8 @@ function model_to_dict(model::DSCIModel)
             "tol_update" => model.settings.tol_update,
             "clamp_rate_update" => model.settings.clamp_rate_update,
             "sdf_relaxer" => model.settings.sdf_relaxer,
-            "solver_value_scaling" => convert_to_string(model.settings.value_scaling)
+            "solver_value_scaling" => convert_to_string(model.settings.value_scaling),
+            "INNOV_TYPE" => string(typeof(model.env.INNOV_TYPE))
         ),
 
         "SolverState" => Dict(
@@ -57,7 +58,8 @@ function build_footer_strings(model::DSCIModel)
         @sprintf("l_max=%.3g", model.env.l_max),
         @sprintf("tol=%.1e", model.settings.tol_update),
         @sprintf("sdf=%.3g", model.settings.sdf_relaxer),
-        "scaling=$(convert_to_string(model.settings.value_scaling))"
+        "scaling=$(convert_to_string(model.settings.value_scaling))",
+        "INNOV_TYPE=$(string(typeof(model.env.INNOV_TYPE)))"
     ]
 
     algo_line = join(algo, "   ")

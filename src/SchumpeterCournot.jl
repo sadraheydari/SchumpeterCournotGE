@@ -64,6 +64,11 @@ export  ModelParameters,
         Levels, 
         Detrended,
 
+        # Innovation Types
+        InnovationType,
+        NonChanging,
+        Decreasing,
+
         # Solver Functions
         solve_PFI!,
         solve_values!,

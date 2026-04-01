@@ -36,8 +36,7 @@ function update_policy!(model:: DSCIModel; clamp:: Bool = false, clamp_rate:: Fl
                     model.env.param.γ ^ (A_1 - 1) # Scale by productivity level if using detrended values
                 )
                                 
-                η_func = x -> innovation_success_prob(x, model.env.param)
-                η_vec = η_func.(l_vec)
+                η_vec = [innovation_success_prob(l, A, model.env) for (l, A) in zip(l_vec, A_vec)]
 
                 for transition_state in get_transition_states(model.env.param)
                     pr = calculate_transition_probability(transition_state, η_vec)

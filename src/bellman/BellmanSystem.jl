@@ -41,7 +41,7 @@ function construct_vf_equation_system(model:: DSCIModel)
             )
             
             # LHS: Transitions
-            η_vec = [innovation_success_prob(l, model.env.param) for l in l_vec]
+            η_vec = [innovation_success_prob(model.env.INNOV_TYPE, l, A, model.env.param) for (l, A) in zip(l_vec, A_old)]
 
             for transition_state in get_transition_states(model)
                 pr = calculate_transition_probability(transition_state, η_vec)

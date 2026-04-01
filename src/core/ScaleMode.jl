@@ -27,3 +27,9 @@ scale_kernel(::Detrended, sdf, A_old, A_new) = sdf * (A_new / A_old)
 # String representation for scaling modes
 convert_to_string(::Levels) = "Levels()"
 convert_to_string(::Detrended) = "Detrended()"
+
+
+
+abstract type InnovationType end
+struct NonChanging <: InnovationType end
+struct Decreasing <: InnovationType end

@@ -14,7 +14,7 @@ function ModelParameters(;
     σ::Float64 = 1.5,
     γ::Float64 = 1.04,
     α::Float64 = 5.0,
-    PROB::String = "SQRT"    
+    PROB::String = "SQRT"
 )
     return ModelParameters(n, β, σ, γ, α, PROB)
 end;
@@ -25,6 +25,7 @@ struct ModelEnvironment
     τ_max::Int
     idx_map::TupleIndexMap
     l_max::Float64
+    INNOV_TYPE:: InnovationType
 end
 
 
@@ -75,11 +76,12 @@ function DSCIModel(;
     clamp_rate_update = 0.5,
     sdf_relaxer = 1.0,
     l_max = 0.3,
-    value_scaling = Levels()
+    value_scaling = Levels(),
+    INNOV_TYPE = NonChanging()
 )
     idx_map = build_lookup(param.n - 1, τ_max)
     
-    env = ModelEnvironment(param, τ_max, idx_map, l_max)
+    env = ModelEnvironment(param, τ_max, idx_map, l_max, INNOV_TYPE)
     
     settings = SolverSettings(max_iter_update, tol_update, clamp_rate_update, sdf_relaxer, value_scaling)
     
