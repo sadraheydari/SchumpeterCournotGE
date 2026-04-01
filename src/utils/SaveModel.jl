@@ -18,9 +18,10 @@ function save_model(model::DSCIModel;
     P = model.state.policy_grid
     Pj = model.state.policy_grid_j
     is_converged = model.state.is_converged
+    innovation_type = model.env.INNOV_TYPE
 
     # Save binary model
-    @save jld_path param τ_max l_max settings V P Pj is_converged
+    @save jld_path param τ_max l_max settings V P Pj is_converged innovation_type
 
     # Save metadata JSON
     if save_metadata
@@ -42,10 +43,10 @@ end
 
 function load_model(path::AbstractString)::DSCIModel
 
-    @load path param τ_max l_max settings V P Pj is_converged
+    @load path param τ_max l_max settings V P Pj is_converged innovation_type
 
     idx_map = build_lookup(param.n - 1, τ_max)
-    env = ModelEnvironment(param, τ_max, idx_map, l_max)
+    env = ModelEnvironment(param, τ_max, idx_map, l_max, innovation_type)
 
     state = SolverState(V, P, Pj, is_converged)
 
