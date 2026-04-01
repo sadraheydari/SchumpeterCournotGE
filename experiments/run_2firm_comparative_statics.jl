@@ -6,13 +6,13 @@ using LinearAlgebra, Statistics
 
 # --- 1. Baseline Configuration ---
 const N_FIRMS = 2
-const TAU_MAX = 70
+const TAU_MAX = 60
 const L_MAX   = 0.3
 
 baseline_params = (
     σ = 1.3, 
-    γ = 1.03, 
-    β = 0.93, 
+    γ = 1.02, 
+    β = 0.96, 
     α = 5.0
 )
 
@@ -20,8 +20,8 @@ baseline_params = (
 # We vary one at a time, keeping others at baseline
 sweeps = [
     (:σ, [1.2, 1.4]),
-    (:γ, [1.01, 1.05]),
-    (:β, [0.91, 0.95]),
+    (:γ, [1.01, 1.03]),
+    (:β, [0.94, 0.98]),
     (:α, [1.0, 10.0])
 ]
 
@@ -40,14 +40,14 @@ model = DSCIModel(
     clamp_rate_update = 0.05,
     sdf_relaxer = 1.0,
     initial_pj = 0.0,
-    tol_update = 1e-6
+    tol_update = 1e-7
 )
 
 # Helper function to update structural environment in-place
 function update_model_params!(m::DSCIModel, new_p::ModelParameters)
     # Reconstruct the Environment struct using existing fixed components
     # This replaces the 'env' pointer but keeps 'state' (the grids) intact
-    m.env = ModelEnvironment(new_p, m.env.τ_max, m.env.idx_map, m.env.l_max)
+    m.env = ModelEnvironment(new_p, m.env.τ_max, m.env.idx_map, m.env.l_max, m.env.INNOV_TYPE)
     m.state.is_converged = false # reset convergence status for new parameters
 end
 
