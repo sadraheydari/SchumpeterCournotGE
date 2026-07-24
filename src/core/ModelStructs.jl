@@ -2,21 +2,25 @@ struct ModelParameters
     n::Int64        # number of firms
     β::Float64      # discount factor
     σ::Float64      # risk aversion
+    μ::Float64      # elasticity across industries
     γ::Float64      # innovation step size
-    α::Float64      # probability of successful innovation parameter
-    PROB::String    # innovation probability function
+    θ::Float64      # probability of successful innovation parameter on research labor
+    ε::Float64      # catch-up parameter for innovation probability function
+    η̄::Float64      # scale parameter for innovation probability function
 end;
 
 
 function ModelParameters(;
     n::Int64 = 2,
-    β::Float64 = 0.9,
-    σ::Float64 = 1.5,
-    γ::Float64 = 1.04,
-    α::Float64 = 5.0,
-    PROB::String = "SQRT"
+    β::Float64 = 0.96,
+    σ::Float64 = 2.0,
+    μ::Float64 = 4.0,
+    γ::Float64 = 1.05,
+    θ::Float64 = 0.5,
+    ε::Float64 = 0.5,
+    η̄::Float64 = 0.3
 )
-    return ModelParameters(n, β, σ, γ, α, PROB)
+    return ModelParameters(n, β, σ, μ, γ, θ, ε, η̄)
 end;
 
 
