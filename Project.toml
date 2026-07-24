@@ -1,6 +1,6 @@
-name = "SchumpeterCournot"
-uuid = "2a9203b3-6126-4498-9280-ed26afa298f2"
-version = "0.4.0"
+name = "SchumpeterCournotGE"
+uuid = "c98182e2-247a-4fc9-96b9-87d7cbb3bdc8"
+version = "0.1.0"
 authors = ["M. Sadra Heydari"]
 
 [deps]
