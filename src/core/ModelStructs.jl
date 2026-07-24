@@ -29,7 +29,6 @@ struct ModelEnvironment
     τ_max::Int
     idx_map::TupleIndexMap
     l_max::Float64
-    INNOV_TYPE:: InnovationType
 end
 
 
@@ -81,11 +80,10 @@ function DSCIModel(;
     sdf_relaxer = 1.0,
     l_max = 0.3,
     value_scaling = Levels(),
-    INNOV_TYPE = NonChanging()
 )
     idx_map = build_lookup(param.n - 1, τ_max)
     
-    env = ModelEnvironment(param, τ_max, idx_map, l_max, INNOV_TYPE)
+    env = ModelEnvironment(param, τ_max, idx_map, l_max)
     
     settings = SolverSettings(max_iter_update, tol_update, clamp_rate_update, sdf_relaxer, value_scaling)
     
