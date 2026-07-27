@@ -92,11 +92,6 @@ Economic parameters. All fields have defaults, so `Params()` works and
   * `θ`  — elasticity of the innovation probability w.r.t. research labour
   * `ε`  — catch-up parameter in the innovation probability
   * `η̄`  — scale parameter in the innovation probability
-
-Invariants are checked at construction; see the inner constructor. The
-checks are deliberately loose — only what is unambiguous — so tighten them
-to your model rather than discovering a bad calibration three hours into a
-solve.
 """
 Base.@kwdef struct Params
     n::Int      = 3
@@ -111,12 +106,12 @@ Base.@kwdef struct Params
     function Params(n, β, σ, μ, γ, θ, ε, η̄)
         n >= 1    || throw(ArgumentError("n must be ≥ 1 (got $n)"))
         0 < β < 1 || throw(ArgumentError("β must lie in (0,1) (got $β)"))
-        σ > 0     || throw(ArgumentError("σ must be positive (got $σ)"))
-        μ > 0     || throw(ArgumentError("μ must be positive (got $μ)"))
-        γ > 0     || throw(ArgumentError("γ must be positive (got $γ)"))
-        θ > 0     || throw(ArgumentError("θ must be positive (got $θ)"))
+        σ > 1     || throw(ArgumentError("σ must be > 1 (got $σ)"))
+        μ > 1     || throw(ArgumentError("μ must be > 1 (got $μ)"))
+        γ >= 0    || throw(ArgumentError("γ must be non-negative (got $γ)"))
+        θ >= 0    || throw(ArgumentError("θ must be non-negative (got $θ)"))
         ε >= 0    || throw(ArgumentError("ε must be non-negative (got $ε)"))
-        η̄ > 0     || throw(ArgumentError("η̄ must be positive (got $η̄)"))
+        η̄ >= 0    || throw(ArgumentError("η̄ must be non-negative (got $η̄)"))
         return new(n, β, σ, μ, γ, θ, ε, η̄)
     end
 end
@@ -126,12 +121,6 @@ end
 
 Length `n` of a state vector as `StateArray` counts it — the first
 component plus the permutation-symmetric ones.
-
-**This is the one place where the two meanings of `n` meet.** `p.n` is the
-number of firms; `StateArray`'s `n` is the length of the state. They
-coincide only if the state is exactly one entry per firm. If your state is,
-say, an industry index plus one quality per firm, this should be `p.n + 1`.
-Change it here and nothing else needs touching.
 """
 state_length(p::Params) = p.n
 
@@ -142,10 +131,8 @@ state_length(p::Params) = p.n
 """
     Settings(; kwargs...)
 
-Numerical choices: the grid specification, loop tolerances, and simulation
-controls. Everything here is a *number, symbol or flag* — never a function
-or a constructed object — so that a `Settings` can be written to TOML and
-read back.
+Numerical choices: the grid specification, loop tolerances, and 
+simulation controls.
 
 Grid:
 
@@ -225,10 +212,8 @@ Build a spacing from its serialisable description. Recognised:
 | `:shiftedlog` | `ShiftedLogSpacing(param)` | shift `c`    |
 | `:power`      | `PowerSpacing(param)`      | exponent `θ` |
 
-This indirection is what lets a grid survive a round trip through a file: a
-`WarpSpacing` holds a closure and cannot be serialised, so `Settings` stores
-the recipe and the grid is rebuilt from it. For a bespoke warp, construct
-the `StateGrid` yourself and pass it to [`DSIC`](@ref).
+For a bespoke warp, construct the `StateGrid` yourself and pass it 
+to [`DSIC`](@ref).
 """
 function spacing_from(sym::Symbol, param::Real)
     sym === :linear     && return LinearSpacing()
