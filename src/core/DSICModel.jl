@@ -119,8 +119,9 @@ defaults, so `Params()` works and `Params(β = 0.97)` changes one thing.
 
 Invariants are checked at construction. They are deliberately loose — only
 what is unambiguous — so tighten them to your model rather than discovering
-a bad calibration three hours into a solve. In particular the draft requires
-`μ > 1` and `γ > 1`; only positivity is enforced here.
+a bad calibration three hours into a solve. The draft's `μ > 1` and the
+step size `γ >= 1` are enforced, as is `σ > 1`; `θ`, `ε` and `η̄` are only
+required to be non-negative, so `η̄ = 0` gives a no-innovation benchmark.
 """
 Base.@kwdef struct Params
     n::Int      = 3
@@ -150,6 +151,7 @@ end
 
 Length `n` of a state vector as `StateArray` counts it — the first
 component plus the permutation-symmetric ones.
+
 """
 state_length(p::Params) = p.n
 
@@ -292,32 +294,26 @@ Base.@kwdef struct Settings
     spacing_param::Float64  = 1.0
     yspacing::Symbol        = :linear
     yspacing_param::Float64 = 1.0
-    
     # --- loop 1: value function ---------------------------------------
     tol_vfi::Float64        = 1e-10
     maxiter_vfi::Int        = 1_000
-    
     # --- loop 2: policy_comp / the game -------------------------------
     tol_game::Float64       = 1e-8
     maxiter_game::Int       = 200
     λ_game::Float64         = 0.2
-    
     # --- loop 3: aggregates -------------------------------------------
     tol_agg::Float64        = 1e-6
     maxiter_agg::Int        = 100
     λ_agg::Float64          = 0.3
-   
     # --- starting point for loop 3 ------------------------------------
     g_w0::Float64           = 0.0
     g_y0::Float64           = 0.0
     ŷ0::Float64             = 1.5
-    
     # --- simulation ---------------------------------------------------
     n_sims::Int             = 1_000
     n_periods::Int          = 500
     burnin::Int             = 100
     seed::Int               = 20260727
-    
     # --- reporting ----------------------------------------------------
     verbose::Bool           = true
 
@@ -468,15 +464,12 @@ mutable struct Solution{A<:StateArray}
     V::A
     policy::A
     policy_comp::A
-
     aggs::Aggregates
     L_r::Float64
     ℒ::Float64
-
     vfi::LoopStatus
     game::LoopStatus
     agg::LoopStatus
-    
     history::Vector{Float64}
 end
 
