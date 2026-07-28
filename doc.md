@@ -1,519 +1,273 @@
-# Economic Model Specification
+# The Detrended Problem: Definition and Derivation
 
-This document serves as the implementation reference for the model. It contains all equations, state variables, parameters, normalization, and numerical procedures required for coding the model. The objective is that implementation should require consulting only this document, without referring back to the paper.
-
----
-
-# 1. Overview
-
-The economy consists of a continuum of industries. Each industry contains `n` firms that compete in quantities (Cournot competition) while simultaneously investing in R&D.
-
-The solution algorithm searches for a **Symmetric Markov Perfect Equilibrium (SMPE)** together with a **Balanced Growth Path (BGP)**.
-
-The numerical algorithm consists of two nested fixed-point problems:
-
-1. **Inner fixed point**
-   - Solve the firm's dynamic programming problem.
-   - Compute the equilibrium research policy.
-
-2. **Outer fixed point**
-   - Simulate the economy using the policy.
-   - Update aggregate growth rates until the simulated economy is consistent with the assumed aggregate variables.
-
-The model is solved entirely in **detrended variables**.
+This document defines, and fully derives, the stationary (detrended) recursive
+problem solved by each firm. It is self-contained: everything needed to
+implement the firm's dynamic program is stated here, together with a brief
+justification tying each step back to the level (undetrended) equations of the
+model. Notation matches the rest of the implementation reference.
 
 ---
 
-# 2. Parameters
+## 1. Why detrending is necessary
 
-| Symbol | Description |
-|---------|-------------|
-| `β` | Discount factor |
-| `σ` | Inv. Elasticity of intertemporal substitution |
-| `μ` | Elasticity of substitution across industries |
-| `γ` | Innovation step size |
-| `η̄` | Innovation intensity |
-| `θ` | Curvature of innovation function |
-| `ε` | Catch-up parameter |
-| `n` | Number of firms per industry |
+Along any equilibrium path with positive R&D, productivity $A_i$, the wage
+$w_t$, and aggregate output $\mathcal Y_t$ all grow without bound — this is the
+whole point of the innovation technology. Posed directly in levels, the firm's
+Bellman equation has a state space and a value function that both grow every
+period, so there is no fixed point to compute and no stationary policy
+function to solve for.
 
----
-
-# 3. State Variables
-
-## Firm productivity
-
-The model is solved using normalized productivity
-
-$$
-a_i=\frac{A_i}{w}.
-$$
-
-where
-
-- $A_i$ is the productivity level
-- $w$ is the aggregate wage.
-
-The Bellman equation is solved over these normalized states.
+Detrending re-expresses the *same* problem in variables that are stationary
+along the balanced growth path (BGP), so that a single time-invariant Bellman
+equation and a single time-invariant policy $\pi_r(\cdot)$ characterize the
+equilibrium. This is possible because of two properties of the static
+equilibrium, established next.
 
 ---
 
-## Bellman state
+## 2. Scale properties of the static equilibrium
 
-The state of firm $i$ is
+Consider a common rescaling of every firm's productivity in the economy,
+$A_i \to \kappa A_i$ for all $i$, in all industries (i.e. rescaling the entire
+cross-sectional distribution $\Phi$). Two classes of object behave differently:
 
-$$
-x_i=(a_i,\mathbf a_{-i}^{\,s}),
-$$
+**Homogeneous of degree 1 (they scale by $\kappa$ — "trending" objects):**
+$A_i$, the industry harmonic mean $\tilde A(j)$, the wage $w$, aggregate output
+$\mathcal Y$, industry output $y(j)$, firm output $y_i$, firm/industry
+dividends $d_i,\,d(j)$, and the value function $V$.
 
-where
+*Why:* the harmonic mean is homogeneous of degree 1 by construction. The wage
+equation aggregates $\tilde A(j)/m(j)$ across industries via a CES-type
+aggregator with $m(j)$ unchanged under rescaling (see below), so $w$ inherits
+degree 1. $\mathcal Y = w(1-L^r)/(1-\mathscr L)$ then inherits degree 1 from
+$w$ since $L^r,\mathscr L$ are degree 0. Dividends and firm value inherit
+degree 1 by the same chain, since discounting depends only on *growth rates*,
+not on levels.
 
-- $a_i$ is own productivity,
-- $\mathbf a_{-i}^{\,s}$ is the sorted productivity vector of competitors.
+**Homogeneous of degree 0 (unchanged — "stationary" objects):**
+the relative price $p(j)$, the markup $m(j)$, the number of active firms
+$\tilde n(j)$ (and hence the identity of the active set $\mathcal N^*$), market
+shares $s_i$, Lerner indices $\ell_i,\mathscr L$, and the labour shares
+$L^p, L^r$.
 
-Sorting removes redundant permutations from the state space.
+*Why:* every one of these is a ratio of two productivity levels, or a share of
+labour (which is exogenously fixed at 1 and never rescales). A common
+rescaling of productivities cancels in every ratio.
 
----
-
-# 4. Aggregate Variables
-
-The individual firm takes the following aggregate variables as given
-
-$$
-(g_w,\;g_y,\; \hat{\mathcal{Y}}),
-$$
-
-where
-
-| Variable | Meaning |
-|----------|----------|
-| $g_w$ | Wage growth |
-| $g_y$ | Aggregate output growth |
-| $\hat{\mathcal{Y}} = \mathcal{Y}/w$ | Normalized aggregate output |
-
-These variables are updated only in the outer fixed-point iteration.
+This is the reason the model is tractable: **only two** aggregate objects
+($w_t$ and $\mathcal Y_t$) carry a trend, and everything else is already
+scale-free.
 
 ---
 
-# 5. Normalization
+## 3. Closing the model: the choice $\bar A_t \equiv w_t$
 
-The model is solved using detrended variables.
+The theoretical draft defines the catch-up ratio $\rho_i = A_i/\bar A_t$ with
+$\bar A_t = \Xi(\Phi_t)$, where $\Xi$ is *left unspecified* — only required to
+be homogeneous of degree 1 — with the promise that a specific choice would be
+tied to the equilibrium objects once the Cournot equilibrium was in hand.
 
-The normalization is
-
-$$
-a_i=\frac{A_i}{w}.
-$$
-
-Furthermore,
+**This is where that choice is made:** we set
 
 $$
-\boxed{\bar A=w.}
+\boxed{\bar A_t \equiv w_t.}
 $$
 
-Therefore
+This is a modeling assumption (fixing $\Xi$), not a derived identity. It is a
+natural choice because $w_t$ is (a) homogeneous of degree 1 in $\Phi_t$, exactly
+as required of $\Xi$, and (b) already the equilibrium-consistent aggregator of
+industry productivities (via the wage equation), so no additional aggregator
+needs to be introduced. Given this choice,
 
 $$
-\rho=\frac{A_i}{\bar A}
-      =
-      \frac{A_i}{w}
-      =
-      a_i.
+\rho_i = \frac{A_i}{\bar A_t} = \frac{A_i}{w_t},
 $$
 
-Consequently the innovation probability depends only on normalized productivity.
+which is exactly the normalized productivity defined next — i.e. the
+catch-up/standing-on-shoulders term collapses onto the detrended state itself,
+with no separate object to track.
 
 ---
 
-# 6. Innovation
+## 4. Detrended variables — definitions
 
-The innovation probability is
-
+**State:**
 $$
-\eta(l)
-=
-1-
-\exp\left(
--\bar\eta
-l^\theta
-\rho^{-\varepsilon}
-\right).
+a_i \equiv \frac{A_i}{w_t}.
 $$
+Because $A_i$ is degree 1 and $w_t$ is degree 1, $a_i$ is degree 0: a genuinely
+stationary state variable (unlike raw $A_i$). Consequently $\rho_i = a_i$.
 
-Using the normalization,
-
+**Flows (all degree-1 objects divided through by $w_t$):**
 $$
-\rho=a_i.
+\hat V \equiv \frac{V}{w_t}, \qquad
+\hat d_i \equiv \frac{d_i}{w_t}, \qquad
+\hat y(j) \equiv \frac{y(j)}{w_t}, \qquad
+\hat y_i \equiv \frac{y_i}{w_t}, \qquad
+\hat{\mathcal Y} \equiv \frac{\mathcal Y_t}{w_t}.
 $$
 
-Therefore
+**Growth rates:**
+$$
+1+g_t^w \equiv \frac{w_{t+1}}{w_t}, \qquad
+1+g_t^y \equiv \frac{\mathcal Y_{t+1}}{\mathcal Y_t}.
+$$
+(Market clearing gives $\mathcal Y_t=\mathcal C_t$, so $g^y$ is equivalently
+consumption growth — this is the object that enters the household's
+stochastic discount factor.)
 
-$$
-\eta(l)
-=
-1-
-\exp\left(
--\bar\eta
-l^\theta
-a_i^{-\varepsilon}
-\right).
-$$
+Objects that are *already* degree 0 are **not** detrended and are used exactly
+as in levels: $p(j)$, $m(j)$, $\tilde n(j)$, $s_i$, $\ell_i$, $\mathscr L$,
+$L^p$, $L^r$, and the production/research labour allocations $l_i^p, l_i^r$
+themselves (labour is never rescaled).
 
 ---
 
-# 7. Static Equilibrium
+## 5. Static equilibrium, in detrended form
 
-Given a productivity vector
+Given a state vector $\mathbf a=(a_1,\ldots,a_n)$ and a candidate active set
+$\mathcal K$ of size $k$:
 
 $$
-\mathbf a=(a_1,\ldots,a_n),
+\tilde a(\mathcal K) = \left(\frac1k\sum_{i\in\mathcal K}\frac1{a_i}\right)^{-1},
+\qquad
+m(\mathcal K) = \frac{\mu k}{\mu k - 1}.
 $$
 
-the static Cournot problem is solved. The static equilibrium returns
-- active firms,
-- participation set,
-- aggregate productivity,
-- industry markup,
-- equilibrium prices,
-- market shares,
-- Lerner indices,
-- firm profits.
+**Active set.** A set $\mathcal N^*$ of size $\tilde n$ is the equilibrium
+active set iff, writing $\tilde a\equiv\tilde a(\mathcal N^*)$,
+$$
+a_i \ge \frac{\mu\tilde n - 1}{\mu\tilde n}\,\tilde a \quad \forall i\in\mathcal N^*,
+\qquad
+a_{i'} < \frac{\mu(\tilde n+1)-1}{\mu(\tilde n+1)}\,\tilde a(\mathcal N^*\cup\{i'\}) \quad \forall i'\notin\mathcal N^*.
+$$
+This is self-referential ($\tilde n,\tilde a$ depend on $\mathcal N^*$, which is
+what is being solved for). The model's existence/uniqueness result guarantees
+$\mathcal N^*$ consists of the $\tilde n$ most productive firms for a unique
+$\tilde n$, which gives a direct algorithm:
 
-These are deterministic functions of the current productivity state.
+> **Solving for $\mathcal N^*$ given $\mathbf a$:**
+> 1. Sort firms in descending order of $a_i$.
+> 2. For $k=n,n-1,\ldots,1$, compute $\tilde a_k \equiv \tilde a(\text{top }k)$.
+> 3. Let $k^*$ be the largest $k$ such that the $k$-th ranked firm satisfies
+>    $a_{(k)} \ge \frac{\mu k-1}{\mu k}\tilde a_k$.
+> 4. Set $\mathcal N^*=$ top $k^*$ firms, $\tilde n=k^*$, $\tilde a=\tilde a_{k^*}$.
+
+**Price:** since $\tilde A(j) = w_t\,\tilde a$,
+$$
+p = \frac{m\,w_t}{\tilde A(j)} = \frac{m}{\tilde a}.
+$$
+
+**Market share** (for $i\in\mathcal N^*$; else $s_i=0$):
+$$
+s_i = \max\left\{0,\; \mu\left(1-\frac{\tilde a}{m\,a_i}\right)\right\}.
+$$
+
+**Lerner index.** From $\ell_i=(1-1/(p a_i))s_i$ and $1/(pa_i)=\tilde a/(m a_i)=1-s_i/\mu$:
+$$
+\ell_i = \left(1-\frac1{p\,a_i}\right)s_i = \frac{s_i^2}{\mu}.
+$$
+(This also reproduces the aggregate identity $\mathrm{HHI}(j)=\mu\,\mathscr L(j)$.)
+
+**Output, labour, dividend.** With $\hat{\mathcal Y}=(1-L^r)/(1-\mathscr L)$:
+$$
+\hat y(j) = \hat{\mathcal Y}\,p^{-\mu}, \qquad
+\hat y_i = s_i\,\hat y(j), \qquad
+l_i^p = \frac{\hat y_i}{a_i} \;\;(\text{= actual labour, not detrended}).
+$$
+$$
+\hat d_i = p\,\hat y_i - l_i^p - l_i^r
+\;=\;
+p^{1-\mu}\,\ell_i\left(\frac{1-L^r}{1-\mathscr L}\right) - l_i^r.
+$$
+The two expressions are algebraically equivalent (using $\ell_i = s_i - l_i^p/(\hat y(j)\,p)$); **the second is used in the implementation** since it avoids computing $\hat y(j)$ and $l_i^p$ explicitly.
 
 ---
 
-For a candidate active set
-$
-\mathcal N^*,
-$
-the aggregate productivity is the harmonic mean
+## 6. Innovation probability, detrended
+
+Using $\rho_i=a_i$ from §3:
 $$
-\tilde a
-=
-\left(
-\frac1{\tilde n}
-\sum_{i\in\mathcal N^*}
-\frac1{a_i}
-\right)^{-1},
-$$
-where
-$
-\tilde n =
-|\mathcal N^*|.
-$
-
-The Cournot markup is
-$$
-m
-=
-\frac{\mu\tilde n}
-{\mu\tilde n-1}.
-$$
-
-The detrended industry price is
-
-$$
-p
-=
-\frac{m}{\tilde a}.
-$$
-
-Since
-$
-a_i=\frac{A_i}{w},
-$
-the equilibrium price is already normalized by the wage.
-
-
-For every firm
-
-$$
-s_i
-= \max \bigg\{ 0,
-\mu
-\left(
-1-
-\frac{\tilde a}
-{m a_i}
-\right)
-\bigg\}.
-$$
-
-Firm-level Lerner index
-
-$$
-\ell_i
-=
-\left(
-1-
-\frac1{p a_i}
-\right)
-s_i
-=
-\frac{s_i^2}{\mu}.
-$$
-
-Normalized output satisfies
-
-$$
-\hat{\mathcal{Y}}
-=
-\frac{1-L^r}
-{1-\mathscr L}.
-$$
-
-
-Industry output is
-
-$$
-y
-=
-\hat{\mathcal{Y}}
-p^{-\mu}.
-$$
-
-Firm output
-
-$$
-y_i
-=
-s_i y.
-$$
-
-Production labour is
-
-$$
-l_i^p
-=
-\frac{y_i}{a_i}.
-$$
-
-Firm detrended dividend is
-
-$$
-\hat d_i
-=
-p\,y_i
--
-l_i^p
--
-l_i^r.
-$$
-
-Equivalently,
-
-$$
-\hat d_i
-=
-p^{1-\mu}
-\ell_i
-\left(
-\frac{1-L^r}
-{1-\mathscr L}
-\right)
--
-l_i^r.
-$$
-
-The second expression is used in the implementation.
-
----
-
-# Dynamic Problem
-
-The Bellman equation is
-
-$$
-\hat V(x_i)
-=
-\max_{l_i^r}
-\left\{
-\hat d_i
-+
-\beta
-(1+g_y)^{-\sigma}
-(1+g_w)
-E[\hat V(x_i')]
-\right\}.
+\eta(l_i^r) = 1-\exp\!\left(-\bar\eta\,(l_i^r)^\theta\,a_i^{-\varepsilon}\right).
 $$
 
 ---
 
-# Innovation
+## 7. Transition law, detrended
 
-Innovation probability
+In levels, $A_{i,t+1}=\gamma A_{i,t}$ on success and $A_{i,t}$ on failure.
+Dividing by $w_{t+1}=w_t(1+g_t^w)$:
 
 $$
-\eta(l_i^r)
-=
-1-
-\exp
-\left(
--\bar\eta
-(l_i^r)^\theta
-a_i^{-\varepsilon}
-\right).
+a_i' = \frac{\gamma\,a_i}{1+g_t^w} \quad(\text{success}), \qquad
+a_i' = \frac{a_i}{1+g_t^w} \quad(\text{failure}).
 $$
+
+The next-period Bellman state $x_i' = (a_i',\, \mathbf a_{-i}'^{\,s})$ is
+constructed by applying this transition **independently to every firm in the
+industry** (each firm's own innovation draw, using its own $l_i^r$), dividing
+every resulting productivity by the same $(1+g_t^w)$, and then re-sorting the
+rivals' vector to preserve the sorted-state convention.
 
 ---
 
-# Transition Law
+## 8. The detrended Bellman equation
 
-For each firm
-
-Successful innovation
+Start from the level Bellman equation and household SDF, $M_{t,t+1}=\beta(1+g_t^y)^{-\sigma}$:
+$$
+V_t = \max_{l_i^r\ge0}\Big\{ d_{i,t} + M_{t,t+1}\,\mathbb E\big[V_{t+1}\big]\Big\}.
+$$
+Substitute $V_t = w_t\hat V_t$ and $V_{t+1}=w_{t+1}\hat V_{t+1}=w_t(1+g_t^w)\hat V_{t+1}$, then divide through by $w_t$:
 
 $$
-a_i'
-=
-\frac{\gamma a_i}
-{1+g_w},
+\boxed{\;
+\hat V(x_i) = \max_{l_i^r\ge0}\Big\{\hat d_i(x_i,l_i^r) + \beta(1+g^y)^{-\sigma}(1+g^w)\,\mathbb E\big[\hat V(x_i')\big]\Big\}
+\;}
 $$
 
-Failure
-
-$$
-a_i'
-=
-\frac{a_i}
-{1+g_w}.
-$$
-
-The next-period productivity vector is obtained by applying this transition independently to every firm and sorting competitors.
+The expectation is over the **joint** innovation outcomes of all $n$ firms in
+the industry (own draw and every rival's draw), since $x_i'$ depends on the
+whole rival vector, not just firm $i$'s own transition. Rivals' research
+choices enter through the symmetric equilibrium policy, $l_{i'}^r=\pi_r(x_{i'})$.
 
 ---
 
-# Active Set
+## 9. What the firm takes as given
 
-A firm is active if
+**Idiosyncratic state:** $x_i = (a_i,\, \mathbf a_{-i}^{\,s})$ — own normalized
+productivity and the sorted vector of rivals'.
 
+**Aggregate objects, held fixed during value-function iteration:**
 $$
-a_i
-\ge
-\frac{\mu\tilde n-1}
-{\mu\tilde n}
-\tilde a.
+(g^w,\; g^y,\; \hat{\mathcal Y}),
 $$
-
-Otherwise
-
-$$
-y_i=s_i=l_i^p=\ell_i=0.
-$$
+where $\hat{\mathcal Y}=(1-L^r)/(1-\mathscr L)$ and $L^r,\mathscr L$ are
+cross-sectional averages (labour share to research; economy-wide Lerner index)
+computed from the *stationary* distribution of firm states under $\pi_r$ — i.e.
+they are simulation-implied moments, not primitives, and are only updated in
+the outer (general-equilibrium) loop, never inside the Bellman recursion.
 
 ---
 
-# 8. Firm Payoff
+## 10. Balanced-growth-path consistency
 
-The detrended dividend is
+Along the BGP the cross-sectional moments $L^r,\mathscr L$ are constant (the
+detrended distribution $\tilde\Phi_t\equiv\Phi_t/w_t$ is stationary), so
+$\hat{\mathcal Y}$ is constant. Since $\mathcal Y_t = w_t\hat{\mathcal Y}$, this
+forces
 
 $$
-\hat d_i
-=
-p^{1-\mu}
-\ell_i
-\left(
-\frac{1-L^r}
-{1-\mathscr L}
-\right)
--
-l_i^r.
+g^w = g^y \equiv g \quad \text{(a single common growth rate on the BGP).}
 $$
 
-Everything except research labour is determined by the static equilibrium.
+During the outer fixed-point iteration (before convergence) $g^w$ and $g^y$
+need not coincide; $g^w=g^y$ is a *diagnostic* that the algorithm has reached
+the BGP, in addition to the usual tolerance checks on $(g^w,g^y,\hat{\mathcal Y})$
+individually.
 
 ---
 
-# 9. Bellman Equation
-
-The detrended Bellman equation is
-
-$$
-\hat V(x_i)
-=
-\max_{l_i^r}
-\left\{
-\hat d_i
-+
-\beta
-(1+g_y)^{-\sigma}
-(1+g_w)
-E
-\left[
-\hat V(x_i')
-\right]
-\right\}.
-$$
-
-During value-function iteration
-
-- $g_w$,
-- $g_y$,
-
-are treated as fixed.
-
----
-
-# 10. State Transition
-
-Each firm's innovation is independent.
-
-If innovation succeeds,
-
-$$
-a_i'
-=
-\frac{\gamma a_i}{1+g_w}.
-$$
-
-Otherwise,
-
-$$
-a_i'
-=
-\frac{a_i}{1+g_w}.
-$$
-
-The next-period state is generated by
-
-1. drawing innovation outcomes,
-2. updating every firm's productivity,
-3. dividing by wage growth,
-4. sorting competitors.
-
----
-
-# 11. Policy Function
-
-The equilibrium policy is
-
-$$
-\pi(x_i)=l_i^r.
-$$
-
-Implementation stores
-
-```julia
-policy[state]
-```
-
-which returns optimal research labour.
-
----
-
-# 12. Numerical Strategy
-
-## Inputs
-
-Initial guesses
-
-- wage growth $g_w$,
-- output growth $g_y$,
-- normalized output $\hat Y$,
-- policy function.
-
-## Procedure
+## 11. Numerical Strategy
 
 The model is solved using a nested fixed-point algorithm over aggregate objects and the firm's policy function.
 
@@ -530,17 +284,3 @@ The model is solved using a nested fixed-point algorithm over aggregate objects 
         *   Perform a damped update on $(g_w, g_y, \hat{y})$.
         *   Return to **Step 1**.
 7.  End convergence loop.
-
-
-
-# 15. Implementation Notes
-
-- The entire dynamic problem is solved in detrended variables.
-- Productivity states are normalized by the aggregate wage.
-- The normalization $\bar A=w$ implies that the catch-up term depends only on normalized productivity.
-- Static Cournot equilibrium is solved before evaluating continuation values.
-- Aggregate variables remain fixed during Bellman iteration.
-- Aggregate variables are updated only after simulation.
-- The algorithm therefore consists of two nested fixed-point iterations:
-    1. Policy iteration.
-    2. General equilibrium iteration.
