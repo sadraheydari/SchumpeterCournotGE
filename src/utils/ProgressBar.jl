@@ -1,5 +1,5 @@
 """
-    ProgressBar
+    ProgressBars
 
 A log-distance based progress tracker designed for solvers with
 geometric convergence.
@@ -25,6 +25,12 @@ This tracker:
 This tracker assumes geometric convergence.
 If convergence is irregular, ETA may fluctuate.
 """
+module ProgressBars
+
+using Printf
+
+export ProgressBar, update!, finish!
+
 mutable struct ProgressBar
     max_iter::Int
     tol::Float64
@@ -165,7 +171,7 @@ function update!(pt::ProgressBar, diff::Float64, iter::Int)
     eta_iter = (1 - progress_iter) * avg_time_iter
     eta_tol = (1 - progress_tol) * avg_time_tol
 
-    eta = min(eta_iter, max(eta_tol, 0.0)) 
+    eta = min(eta_iter, max(eta_tol, 0.0))
 
     # ----- color selection
     color = pt.color
@@ -219,3 +225,5 @@ function finish!(pt::ProgressBar, iter::Int, diff::Float64)
             "with diff=$diff_str",
             RESET)
 end
+
+end # module
