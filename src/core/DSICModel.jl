@@ -25,12 +25,12 @@ sized to that structure:
 
  1. **VFI/PFI** — given aggregates and `policy_comp`, solve the firm's
     problem. Tolerance `tol_vfi`, recorded in `sol.vfi`.
- 2. **Game** — update `policy_comp = λ_game·policy + (1-λ_game)·policy_comp`
-    until `‖policy − policy_comp‖_∞ < tol_game`. Recorded in `sol.game`.
+ 2. **sym_policy** — update `policy_comp = λ_sym_policy·policy + (1-λ_sym_policy)·policy_comp`
+    until `‖policy − policy_comp‖_∞ < tol_sym_policy`. Recorded in `sol.sym_policy`.
  3. **Aggregate** — simulate, recover `(g_w, g_y, ŷ)`, damp with `λ_agg`
     until the sup-norm gap is below `tol_agg`. Recorded in `sol.agg`.
 
-Tolerances should nest, `tol_vfi < tol_game < tol_agg`, so that no loop is
+Tolerances should nest, `tol_vfi < tol_sym_policy < tol_agg`, so that no loop is
 chasing the numerical noise of the one inside it.
 
 # Persistence
@@ -92,7 +92,7 @@ removing a field does not need a bump, since [`from_dict`](@ref) handles
 both.
 
 `2` — split the single inner/outer tolerance pair into the three loops
-(`tol_vfi`, `tol_game`, `tol_agg`) and added aggregates to `Solution`.
+(`tol_vfi`, `tol_sym_policy`, `tol_agg`) and added aggregates to `Solution`.
 Version-1 files still load: their renamed keys are ignored and the new
 fields take defaults.
 """
@@ -269,10 +269,10 @@ Grid:
   * `yspacing`, `yspacing_param` — `y`-axis placement
 
 Loops, innermost first. Tolerances should nest,
-`tol_vfi < tol_game < tol_agg`:
+`tol_vfi < tol_sym_policy < tol_agg`:
 
   * `tol_vfi`,  `maxiter_vfi`               — the firm's problem
-  * `tol_game`, `maxiter_game`, `λ_game`    — the `policy_comp` fixed point
+  * `tol_sym_policy`, `maxiter_sym_policy`, `λ_sym_policy`    — the `policy_comp` fixed point
   * `tol_agg`,  `maxiter_agg`,  `λ_agg`     — the aggregate fixed point
 
 Starting point for the aggregate loop:
@@ -297,10 +297,10 @@ Base.@kwdef struct Settings
     # --- loop 1: value function ---------------------------------------
     tol_vfi::Float64        = 1e-10
     maxiter_vfi::Int        = 1_000
-    # --- loop 2: policy_comp / the game -------------------------------
-    tol_game::Float64       = 1e-8
-    maxiter_game::Int       = 200
-    λ_game::Float64         = 0.2
+    # --- loop 2: policy_comp / the sym_policy -------------------------
+    tol_sym_policy::Float64       = 1e-8
+    maxiter_sym_policy::Int       = 200
+    λ_sym_policy::Float64         = 0.2
     # --- loop 3: aggregates -------------------------------------------
     tol_agg::Float64        = 1e-6
     maxiter_agg::Int        = 100
@@ -319,19 +319,19 @@ Base.@kwdef struct Settings
 
     function Settings(gmin, gmax, kx, ky, ymin, ymax, spacing, spacing_param,
                       yspacing, yspacing_param, tol_vfi, maxiter_vfi,
-                      tol_game, maxiter_game, λ_game, tol_agg, maxiter_agg,
+                      tol_sym_policy, maxiter_sym_policy, λ_sym_policy, tol_agg, maxiter_agg,
                       λ_agg, g_w0, g_y0, ŷ0, n_sims, n_periods, burnin,
                       seed, verbose)
         gmin < gmax       || throw(ArgumentError("need gmin < gmax"))
         kx >= 2           || throw(ArgumentError("kx must be ≥ 2 (got $kx)"))
         ky >= 2           || throw(ArgumentError("ky must be ≥ 2 (got $ky)"))
         tol_vfi > 0       || throw(ArgumentError("tol_vfi must be positive"))
-        tol_game > 0      || throw(ArgumentError("tol_game must be positive"))
+        tol_sym_policy > 0      || throw(ArgumentError("tol_sym_policy must be positive"))
         tol_agg > 0       || throw(ArgumentError("tol_agg must be positive"))
         maxiter_vfi >= 1  || throw(ArgumentError("maxiter_vfi must be ≥ 1"))
-        maxiter_game >= 1 || throw(ArgumentError("maxiter_game must be ≥ 1"))
+        maxiter_sym_policy >= 1 || throw(ArgumentError("maxiter_sym_policy must be ≥ 1"))
         maxiter_agg >= 1  || throw(ArgumentError("maxiter_agg must be ≥ 1"))
-        0 < λ_game <= 1   || throw(ArgumentError("λ_game must lie in (0,1]"))
+        0 < λ_sym_policy <= 1   || throw(ArgumentError("λ_sym_policy must lie in (0,1]"))
         0 < λ_agg <= 1    || throw(ArgumentError("λ_agg must lie in (0,1]"))
         ŷ0 > 0            || throw(ArgumentError("ŷ0 must be positive"))
         n_sims >= 1       || throw(ArgumentError("n_sims must be ≥ 1"))
@@ -339,8 +339,8 @@ Base.@kwdef struct Settings
         burnin >= 0       || throw(ArgumentError("burnin must be ≥ 0"))
         burnin < n_periods || throw(ArgumentError("burnin must be < n_periods"))
         return new(gmin, gmax, kx, ky, ymin, ymax, spacing, spacing_param,
-                   yspacing, yspacing_param, tol_vfi, maxiter_vfi, tol_game,
-                   maxiter_game, λ_game, tol_agg, maxiter_agg, λ_agg,
+                   yspacing, yspacing_param, tol_vfi, maxiter_vfi, tol_sym_policy,
+                   maxiter_sym_policy, λ_sym_policy, tol_agg, maxiter_agg, λ_agg,
                    g_w0, g_y0, ŷ0, n_sims, n_periods, burnin, seed, verbose)
     end
 end
@@ -348,11 +348,11 @@ end
 """
     tolerances_nest(s::Settings) -> Bool
 
-Whether `tol_vfi < tol_game < tol_agg`. Not enforced — there are reasons to
+Whether `tol_vfi < tol_sym_policy < tol_agg`. Not enforced — there are reasons to
 break it while debugging — but a loop solved less tightly than the one
 inside it will stall at that noise floor rather than converge.
 """
-tolerances_nest(s::Settings) = s.tol_vfi < s.tol_game < s.tol_agg
+tolerances_nest(s::Settings) = s.tol_vfi < s.tol_sym_policy < s.tol_agg
 
 """
     spacing_from(sym::Symbol, param::Real) -> AbstractSpacing
@@ -457,7 +457,7 @@ Aggregates and the quantities behind them:
 `L_r` and `ℒ` are recorded rather than iterated: they are what the
 simulation produces, and `ŷ` follows from them by [`yhat_from`](@ref).
 
-Convergence, one record per loop: `vfi`, `game`, `agg`; plus `history`, the
+Convergence, one record per loop: `vfi`, `sym_policy`, `agg`; plus `history`, the
 aggregate-loop residual by iteration.
 """
 mutable struct Solution{A<:StateArray}
@@ -468,7 +468,7 @@ mutable struct Solution{A<:StateArray}
     L_r::Float64
     ℒ::Float64
     vfi::LoopStatus
-    game::LoopStatus
+    sym_policy::LoopStatus
     agg::LoopStatus
     history::Vector{Float64}
 end
@@ -496,7 +496,7 @@ function reset!(sol::Solution; aggs::Aggregates = sol.aggs)
     sol.aggs = aggs
     sol.L_r  = NaN
     sol.ℒ    = NaN
-    reset!(sol.vfi); reset!(sol.game); reset!(sol.agg)
+    reset!(sol.vfi); reset!(sol.sym_policy); reset!(sol.agg)
     empty!(sol.history)
     return sol
 end
@@ -505,10 +505,10 @@ end
     converged(sol::Solution) -> Bool
 
 Whether all three loops converged. The individual records remain available
-as `sol.vfi`, `sol.game`, `sol.agg` for attributing a failure.
+as `sol.vfi`, `sol.sym_policy`, `sol.agg` for attributing a failure.
 """
 converged(sol::Solution) =
-    sol.vfi.converged && sol.game.converged && sol.agg.converged
+    sol.vfi.converged && sol.sym_policy.converged && sol.agg.converged
 
 # =====================================================================
 #  DSIC
@@ -564,8 +564,8 @@ Base.show(io::IO, p::Params) =
 
 Base.show(io::IO, s::Settings) =
     print(io, "Settings(kx=", s.kx, ", ky=", s.ky, ", spacing=",
-              repr(s.spacing), ", tol_vfi=", s.tol_vfi, ", tol_game=",
-              s.tol_game, ", tol_agg=", s.tol_agg, ")")
+              repr(s.spacing), ", tol_vfi=", s.tol_vfi, ", tol_sym_policy=",
+              s.tol_sym_policy, ", tol_agg=", s.tol_agg, ")")
 
 Base.show(io::IO, m::DSIC) =
     print(io, "DSIC(n=", m.params.n, ", ", nstates(m.sol.V), " states)")
@@ -578,7 +578,7 @@ function Base.show(io::IO, ::MIME"text/plain", m::DSIC)
     println(io, "  ", m.sol.aggs)
     println(io, "  L_r = ", m.sol.L_r, ", ℒ = ", m.sol.ℒ)
     println(io, "  vfi  ", m.sol.vfi)
-    println(io, "  game ", m.sol.game)
+    println(io, "  sym_policy ", m.sol.sym_policy)
     print(io,   "  agg  ", m.sol.agg)
 end
 
@@ -713,9 +713,9 @@ function save_model(path::AbstractString, m::DSIC)
             "vfi_converged"  => s.vfi.converged,
             "vfi_iters"      => s.vfi.iters,
             "vfi_residual"   => s.vfi.residual,
-            "game_converged" => s.game.converged,
-            "game_iters"     => s.game.iters,
-            "game_residual"  => s.game.residual,
+            "sym_policy_converged" => s.sym_policy.converged,
+            "sym_policy_iters"     => s.sym_policy.iters,
+            "sym_policy_residual"  => s.sym_policy.residual,
             "agg_converged"  => s.agg.converged,
             "agg_iters"      => s.agg.iters,
             "agg_residual"   => s.agg.residual,
@@ -762,7 +762,7 @@ function load_model(path::AbstractString)
                           get(meta, "yhat", s.ŷ0))
     sol.L_r = get(meta, "L_r", NaN)
     sol.ℒ   = get(meta, "scriptL", NaN)
-    for (st, pre) in ((sol.vfi, "vfi"), (sol.game, "game"), (sol.agg, "agg"))
+    for (st, pre) in ((sol.vfi, "vfi"), (sol.sym_policy, "sym_policy"), (sol.agg, "agg"))
         st.converged = get(meta, pre * "_converged", false)
         st.iters     = get(meta, pre * "_iters", 0)
         st.residual  = get(meta, pre * "_residual", Inf)
