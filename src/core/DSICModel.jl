@@ -96,7 +96,7 @@ both.
 Version-1 files still load: their renamed keys are ignored and the new
 fields take defaults.
 """
-const SCHEMA_VERSION = 2
+const SCHEMA_VERSION = 3
 
 # =====================================================================
 #  Economic parameters
