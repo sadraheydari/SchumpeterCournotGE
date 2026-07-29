@@ -70,7 +70,7 @@ using ..SymStateArrays
 using ..StateGrids
 using ..DSICModel
 using ..StaticMarket
-using ..ResearchPolicy
+using ..ResearchPolicyFOC
 
 export VFIWorkspace, solve_vfi!, refresh_rivals!, rival_mode,
        bellman_state, rival_etas, continuation_values, contraction_modulus
