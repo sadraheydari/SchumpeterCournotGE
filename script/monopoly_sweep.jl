@@ -44,9 +44,9 @@ const DOMAIN = (
     η̄ = (0.1,  5.0),    # innovation scale
 )
 
-const AMIN           = 0.05
-const KX              = 200
-const SPACING         = :power
+const AMIN           = 0.001
+const KX              = 400
+const SPACING         = :log
 const SPACING_PARAM   = 1.5
 
 """
