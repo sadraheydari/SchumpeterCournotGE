@@ -125,7 +125,7 @@ result into `model.sol` and the outcome into `model.sol.sym_policy`.
 
 Keywords:
 
-  * `λ = model.settings.λ_game` — damping on the belief update
+  * `λ = model.settings.λ_sym_policy` — damping on the belief update
   * `require_inner = true` — a game iteration whose value iteration did not
     converge is chasing noise, so the loop refuses to report convergence
     while that is happening
@@ -144,7 +144,7 @@ to within the tolerance; **use `sol.policy` downstream**, since that is the
 one that actually solves a firm's problem.
 """
 function solve_symmetric_policy!(model::DSIC, ws::VFIWorkspace;
-                     λ::Real = model.settings.λ_game,
+                     λ::Real = model.settings.λ_sym_policy,
                      require_inner::Bool = true,
                      on_iter = nothing,
                      on_vfi = nothing)
@@ -158,7 +158,7 @@ function solve_symmetric_policy!(model::DSIC, ws::VFIWorkspace;
     rising         = 0                  # consecutive increases in the gap
     prev_gap       = Inf
 
-    for iter in 1:set.maxiter_game
+    for iter in 1:set.maxiter_sym_policy
         # --- 1. best response to the current belief -------------------
         solve_vfi!(model, ws; on_iter = on_vfi)
         sol.vfi.converged || (inner_failures += 1)
@@ -181,11 +181,11 @@ function solve_symmetric_policy!(model::DSIC, ws::VFIWorkspace;
         rising = gap > prev_gap ? rising + 1 : 0
         rising == 5 && @warn(
             "the best-response gap has risen five iterations running — " *
-            "λ_game is probably too large for these parameters",
+            "λ_sym_policy is probably too large for these parameters",
             λ, gap, iteration = iter)
         prev_gap = gap
 
-        if gap < set.tol_game
+        if gap < set.tol_sym_policy
             sol.sym_policy.converged = !(require_inner && !sol.vfi.converged)
             break
         end
