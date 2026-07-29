@@ -70,10 +70,10 @@ using ..SymStateArrays
 using ..StateGrids
 using ..DSICModel
 using ..StaticMarket
-using ..ResearchPolicyFOC
+using ..ResearchPolicy
 
 export VFIWorkspace, solve_vfi!, refresh_rivals!, rival_mode,
-       bellman_state, rival_etas, continuation_values
+       bellman_state, rival_etas, continuation_values, contraction_modulus
 
 # =====================================================================
 #  1. Workspace — everything computed once
@@ -365,6 +365,30 @@ end
 # =====================================================================
 
 """
+    contraction_modulus(par::Params, aggs::Aggregates) -> Float64
+
+    Λ = β·(1+g_y)^{-σ}·γ
+
+The factor by which one round of "innovate and carry the value forward"
+scales the value function. The Bellman operator is a contraction only if
+`Λ < 1`; at `Λ ≥ 1` the firm's problem has **no bounded solution** and the
+iteration diverges rather than failing.
+
+Why this and not something involving `μ` or `g_w`: above the top grid point
+the value is *extrapolated linearly*, so its tail grows linearly in `a`
+whatever curvature the profit function has. A firm that innovates moves to
+`γa/(1+g_w)`, worth `Δ·γ/(1+g_w)` times as much, and
+`Δ = β(1+g_y)^{-σ}(1+g_w)` cancels the `(1+g_w)`.
+
+Read economically it is the transversality condition: the discounted
+productivity step must be below one. Setting `γ > 1` while holding
+`g_y = 0` violates it — if firms innovate, output grows, and it is that
+growth in the discount factor that keeps the problem bounded.
+"""
+contraction_modulus(par::Params, aggs::Aggregates) =
+    par.β * (1.0 + aggs.g_y)^(-par.σ) * par.γ
+
+"""
     solve_vfi!(model::DSIC, ws::VFIWorkspace; on_iter = nothing) -> LoopStatus
 
 Apply the Bellman operator until the value function stops moving, writing
@@ -399,6 +423,13 @@ function solve_vfi!(model::DSIC, ws::VFIWorkspace{N,M};
     # holds it by reference — stays valid throughout.
     Ṽ = Interpolant(ws.Vold, grid)
 
+    Λ = contraction_modulus(par, aggs)
+    Λ < 1.0 || @warn(
+        "the Bellman operator is not a contraction (Λ = β(1+g_y)^-σ·γ ≥ 1), " *
+        "so the firm's problem has no bounded solution and this will " *
+        "diverge; raise g_y, or lower β or γ", Λ, par.β, par.γ,
+        g_y = aggs.g_y, σ = par.σ)
+
     sol.vfi.converged = false
     sol.vfi.iters     = 0
     sol.vfi.residual  = Inf
@@ -422,6 +453,12 @@ function solve_vfi!(model::DSIC, ws::VFIWorkspace{N,M};
         residual = maximum(ws.diffs)
         sol.vfi.iters    = iter
         sol.vfi.residual = residual
+
+        # Divergence shows up here long before it would as a wrong answer.
+        isfinite(residual) || error(
+            "value iteration diverged at sweep $iter: the residual is " *
+            "$residual. Check contraction_modulus(params, aggregates) = " *
+            "$(contraction_modulus(par, aggs)), which must be below 1.")
         on_iter === nothing || on_iter(iter, residual)
 
         if residual < set.tol_vfi
