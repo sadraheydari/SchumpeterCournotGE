@@ -149,9 +149,9 @@ function plot_results(res::ModelResult; save = nothing, others = nothing,
                    xlabel = "a_max / a_min", ylabel = "density", h...)
     vline!(p8, [1.0]; ls = :dash, c = :black, lw = 1)
 
-    ttl = @sprintf("n=%d  γ=%.3f  θ=%.2f  ε=%.2f  η̄=%.2f  μ=%.2f  β=%.2f   |   g_w=%.5f  ŷ=%.4f  L^r=%.4f  ℒ=%.4f",
+    ttl = @sprintf("n=%d  γ=%.3f  θ=%.2f  ε=%.2f  η̄=%.2f  μ=%.2f  β=%.2f   |   g_w=%.3f  ŷ=%.4f  L^r=%.2f  ℒ=%.2f",
                    par.n, par.γ, par.θ, par.ε, par.η̄, par.μ, par.β,
-                   m.sol.aggs.g_w, m.sol.aggs.ŷ, m.sol.L_r, m.sol.ℒ)
+                   m.sol.aggs.g_w * 100, m.sol.aggs.ŷ, m.sol.L_r * 100, m.sol.ℒ * 100)
 
     plt = plot(p1, p2, p3, p4, p5, p6, p7, p8; layout = (2, 4),
                size = (1800, 880), plot_title = ttl, plot_titlefontsize = 9)
