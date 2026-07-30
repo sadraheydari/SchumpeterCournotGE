@@ -101,7 +101,7 @@ function SimulationDraws(model::DSIC)
     # start spread over the grid; the level is fixed below and burn-in
     # washes out whatever is left of the initial condition
     lo, hi = extrema(xaxis(model.grid))
-    a0 = (1.5 * lo) .+ ((hi - lo)/2) .* rand(rng, set.n_sims, n)
+    a0 = lo .+ (hi - lo) .* rand(rng, set.n_sims, n)
     return SimulationDraws(u, a0)
 end
 
@@ -287,10 +287,26 @@ function _simulate(model::DSIC, draws::SimulationDraws, ::Val{N}) where {N}
     g_w = acc_gw / kept
     L_r = acc_Lr / kept
     ℒ   = acc_den_ℒ > 0 ? acc_num_ℒ / acc_den_ℒ : NaN
+    frac_out = seen > 0 ? outside / seen : 0.0
+
+    # Nothing in the simulation bounds research by the labour endowment.
+    # Off-equilibrium it can breach it — most often because firms drifted
+    # above the grid and their policy was extrapolated rather than
+    # interpolated, and linear extrapolation of a rising policy has no
+    # ceiling. Say so, rather than letting yhat_from complain about a
+    # demand shifter.
+    L_r < 1 || throw(ArgumentError(
+        "simulated research labour L_r = $L_r exceeds the endowment of 1, " *
+        "so ŷ = (1-L_r)/(1-ℒ) is not positive. $(round(100*frac_out, digits=1))% " *
+        "of firm states fell outside the grid and had their policy " *
+        "extrapolated; widen the grid, lower ŷ, or start the aggregate loop " *
+        "closer to its fixed point."))
+    ℒ < 1 || throw(ArgumentError(
+        "simulated Lerner index ℒ = $ℒ reached 1, so ŷ = (1-L_r)/(1-ℒ) is " *
+        "undefined; the industry profit share cannot exhaust output"))
 
     return SimulationResult(g_w, L_r, ℒ, yhat_from(L_r, ℒ),
-                            acc_nact / kept, acc_amean / kept,
-                            seen > 0 ? outside / seen : 0.0)
+                            acc_nact / kept, acc_amean / kept, frac_out)
 end
 
 """
