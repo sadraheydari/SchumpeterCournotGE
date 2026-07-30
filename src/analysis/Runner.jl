@@ -33,7 +33,7 @@ using ..SymStateArrays
 using ..StateGrids
 using ..DSICModel
 using ..StaticMarket
-using ..ResearchPolicy
+using ..ResearchPolicyFOC
 using ..ValueIteration
 using ..SymPolicyEquilibrium
 using ..GeneralEquilibrium
