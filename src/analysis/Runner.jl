@@ -69,7 +69,7 @@ Watch the state count: it is `k · C(k+n-2, n-1)`, which grows fast in `n`.
 """
 function build_model(; n = 2, β = 0.94, σ = 2.0, μ = 2.0, γ = 1.06,
                        θ = 0.30, ε = 0.50, η̄ = 1.5,
-                       amin = 0.25, amax = 8.0, k = 60,
+                       amin = 0.25, amax = 8.0, k = 60, ky=nothing,
                        spacing = :power, spacing_param = 1.4,
                        g_w = 0.01, g_y = 0.01, ŷ = 1.8,
                        tol_vfi = 1e-10, maxiter_vfi = 8_000,
@@ -78,7 +78,7 @@ function build_model(; n = 2, β = 0.94, σ = 2.0, μ = 2.0, γ = 1.06,
                        n_sims = 2_000, n_periods = 300, burnin = 100,
                        seed = 20260730)
     par = Params(n = n, β = β, σ = σ, μ = μ, γ = γ, θ = θ, ε = ε, η̄ = η̄)
-    set = Settings(gmin = amin, gmax = amax, kx = k, ky = k,
+    set = Settings(gmin = amin, gmax = amax, kx = k, ky = ky === nothing ? k : ky,
                    spacing = spacing, spacing_param = spacing_param,
                    yspacing = spacing, yspacing_param = spacing_param,
                    tol_vfi = tol_vfi, maxiter_vfi = maxiter_vfi,
