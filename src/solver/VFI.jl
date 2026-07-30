@@ -166,7 +166,7 @@ type-unstable.
 function _multisets(k::Int, ::Val{M}) where {M}
     M == 0 && return [()]                        # n = 1: no rivals at all
     out = NTuple{M,Int}[]
-    y = ones(Int, M)
+    y = ntuple(_ -> 1, Val(M))
     while true
         push!(out, ntuple(i -> y[i], Val(M)))
         i = M
