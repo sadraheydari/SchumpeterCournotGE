@@ -17,7 +17,7 @@ using Printf, Statistics, Plots
 using ..StateGrids
 using ..DSICModel
 using ..StaticMarket
-using ..ResearchPolicy
+using ..ResearchPolicyFOC
 using ..Runner
 
 export plot_results, policy_surface, plot_policy
