@@ -195,11 +195,7 @@ concentrating in fewer industries even when the average is flat.
 Set `panel = :symmetric` to trace the run that starts every industry level
 instead. Requires `thin = 1` in `run_model` for a dense path.
 """
-function plot_paths(res::ModelResult; save = nothing, panel::Symbol = :ergodic)
-    panel in (:ergodic, :symmetric) || throw(ArgumentError(
-        "panel must be :ergodic or :symmetric, got $(repr(panel))"))
-    p   = panel === :ergodic ? res.panel : res.sym_panel
-    m   = res.model
+function plot_paths(m::DSIC, p::Panel; save = nothing, extra_text::String = "")
     par = m.params
 
     npanel_periods(p) > 1 || throw(ArgumentError(
@@ -246,14 +242,24 @@ function plot_paths(res::ModelResult; save = nothing, panel::Symbol = :ergodic)
     p9 = _moment_panel(p.period, p.gap, "leader / laggard", "\$A_{\\max}/A_{\\min}\$"; yscale = :log10)
     hline!(p9, [1.0]; ls = :dot, c = :black, lw = 1, label = "Aₘₐₓ=Aₘᵢₙ")
 
-    ttl = _title(res) * @sprintf("   |   %s start, %d periods",
-                                 panel === :ergodic ? "ergodic" : "symmetric",
-                                 npanel_periods(p))
+    ttl = _title(m) * extra_text
+
     plt = plot(p1, p2, p3, p4, p5, p6, p7, p8, p9; layout = (3, 3),
                size = (1600, 1050), plot_title = ttl, plot_titlefontsize = 9)
 
     save === nothing || savefig(plt, save)
     return plt
+end
+
+function plot_paths(res::ModelResult; save = nothing, panel::Symbol = :ergodic)
+    panel in (:ergodic, :symmetric) || throw(ArgumentError(
+        "panel must be :ergodic or :symmetric, got $(repr(panel))"))
+    p   = panel === :ergodic ? res.panel : res.sym_panel
+    m = res.model
+    return plot_paths(m, p; save = save,
+    extra_txt = @sprintf("   |   %s start, %d periods",
+                                 panel === :ergodic ? "ergodic" : "symmetric",
+                                 npanel_periods(p)))
 end
 
 """
@@ -325,9 +331,8 @@ function plot_convergence(res::ModelResult; save = nothing)
 end
 
 # =====================================================================
-
-function _title(res::ModelResult)
-    par, m = res.model.params, res.model
+function _title(m::DSIC)
+    par = m.params
     txt =  @sprintf("n=%d  γ=%.3f  θ=%.2f  ε=%.2f  η̄=%.2f  μ=%.2f  β=%.2f   |   \$\\hat{y}\$=%.3f",
                     par.n, par.γ, par.θ, par.ε, par.η̄, par.μ, par.β,
                     m.sol.aggs.ŷ)
@@ -339,6 +344,10 @@ function _title(res::ModelResult)
         txt *= (@sprintf("   %s=%.2f", t, v) * "%")
     end
     return txt
+end
+
+function _title(res::ModelResult)
+    return _title(res.model)
 end
 
 end # module
