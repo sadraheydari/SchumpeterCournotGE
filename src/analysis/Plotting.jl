@@ -206,45 +206,45 @@ function plot_paths(res::ModelResult; save = nothing, panel::Symbol = :ergodic)
         "the panel holds $(npanel_periods(p)) recorded period(s); re-run with " *
         "thin = 1 (and burnin < n_periods) to trace a path"))
 
-    ln  = (; legend = false, grid = true, lw = 1.6, xlabel = "period")
+    ln  = (; legend = false, grid = true, lw = 1.6)
     eq  = (; ls = :dash, c = :red, lw = 1.5)
 
     # --- aggregates the simulation computes directly -----------------
-    p1 = plot(p.periods, p.g_w; title = "wage growth  g_w", ylabel = "g_w", ln...)
-    hline!(p1, [m.sol.aggs.g_w]; eq...)
+    p1 = plot(p.periods, p.g_w * 100; title = "Wage growth", ylabel = "\$g^w\$ (%)", ln...)
+    hline!(p1, [m.sol.aggs.g_w * 100]; eq...)
 
-    p2 = plot(p.periods, p.L_r; title = "research labour  L^r",
-              ylabel = "L^r", ln...)
-    hline!(p2, [m.sol.L_r]; eq...)
+    p2 = plot(p.periods, p.L_r * 100; title = "Research labour",
+              ylabel = "\$L^r\$ (%)", ln...)
+    hline!(p2, [m.sol.L_r * 100]; eq...)
 
-    p3 = plot(p.periods, p.scriptL; title = "aggregate Lerner  ℒ",
-              ylabel = "ℒ", ln...)
-    hline!(p3, [m.sol.ℒ]; eq...)
+    p3 = plot(p.periods, p.scriptL * 100; title = "Lerner Index  ℒ",
+              ylabel = "ℒ (%)", ln...)
+    hline!(p3, [m.sol.ℒ * 100]; eq...)
 
-    p4 = plot(p.periods, p.yhat; title = "demand shifter  ŷ",
-              ylabel = "ŷ", ln...)
+    p4 = plot(p.periods, p.yhat; title = "Demand shifter  \$\\hat{y}\$",
+              ylabel = "\$\\hat{y}\$", ln...)
     hline!(p4, [m.sol.aggs.ŷ]; eq...)
 
     # --- market structure: every ñ in one panel ----------------------
-    p5 = plot(; title = "share of industries by ñ", ylabel = "share",
-                xlabel = "period", legend = :outerright, grid = true,
-                ylims = (0, 1))
+    p5 = plot(; title = "Share of industries by \$\\tilde{n}\$", ylabel = "share",
+                legend = :outerright, grid = true,
+                ylims = (0, 100))
     for k in 1:par.n
         ts, sh = share_by_period(p.period, p.n_active, k)
-        plot!(p5, ts, sh; lw = 1.6, label = "ñ = $k")
+        plot!(p5, ts, sh .* 100; lw = 1.6, label = "ñ = $k")
     end
 
     # --- cross-sectional moments: mean and median together -----------
-    p6 = _moment_panel(p.fperiod, p.share, "market share  sᵢ", "sᵢ")
-    hline!(p6, [1 / par.n]; ls = :dot, c = :black, lw = 1)
+    p6 = _moment_panel(p.fperiod, p.share, "Market share  \$s_i\$", "\$s_i\$"; xlabel = "")
+    hline!(p6, [1 / par.n]; ls = :dot, c = :black, lw = 1, label = "")
 
-    p7 = _moment_panel(p.period, p.lerner, "industry Lerner  ∑ℓᵢ", "ℓ")
-    hline!(p7, [m.sol.ℒ]; eq...)
+    p7 = _moment_panel(p.period, p.lerner, "industry Lerner  \$\\sum \\ell_i\$", "\$\\ell\$")
+    hline!(p7, [m.sol.ℒ], label = ""; eq...)
 
-    p8 = _moment_panel(p.period, p.a_tilde, "industry productivity  ã", "ã")
+    p8 = _moment_panel(p.period, p.a_tilde, "Industry productivity  \$\\tilde{a}\$", "\$\\tilde{a}\$")
 
-    p9 = _moment_panel(p.period, p.gap, "leader / laggard", "a_max/a_min")
-    hline!(p9, [1.0]; ls = :dot, c = :black, lw = 1)
+    p9 = _moment_panel(p.period, p.gap, "leader / laggard", "\$A_{\\max}/A_{\\min}\$"; yscale = :log10)
+    hline!(p9, [1.0]; ls = :dot, c = :black, lw = 1, label = "Aₘₐₓ=Aₘᵢₙ")
 
     ttl = _title(res) * @sprintf("   |   %s start, %d periods",
                                  panel === :ergodic ? "ergodic" : "symmetric",
@@ -264,13 +264,13 @@ more than either alone: their gap is the skewness of the cross-section, and
 a widening gap means the distribution is stretching even when its centre is
 still.
 """
-function _moment_panel(labels, x, title, ylab)
+function _moment_panel(labels, x, title, ylab; kwargs...)
     ts, avg = by_period(labels, x, mean)
     _,  med = by_period(labels, x, median)
     p = plot(ts, avg; label = "mean", lw = 1.6, c = 1,
              title = title, xlabel = "period", ylabel = ylab,
              legend = :best, grid = true)
-    plot!(p, ts, med; label = "median", lw = 1.6, c = 2, ls = :dashdot)
+    plot!(p, ts, med; label = "median", lw = 1.6, c = 2, ls = :dashdot, kwargs...)
     return p
 end
 
@@ -328,9 +328,17 @@ end
 
 function _title(res::ModelResult)
     par, m = res.model.params, res.model
-    return @sprintf("n=%d  γ=%.3f  θ=%.2f  ε=%.2f  η̄=%.2f  μ=%.2f  β=%.2f   |   g_w=%.5f  ŷ=%.4f  L^r=%.4f  ℒ=%.4f",
+    txt =  @sprintf("n=%d  γ=%.3f  θ=%.2f  ε=%.2f  η̄=%.2f  μ=%.2f  β=%.2f   |   \$\\hat{y}\$=%.3f",
                     par.n, par.γ, par.θ, par.ε, par.η̄, par.μ, par.β,
-                    m.sol.aggs.g_w, m.sol.aggs.ŷ, m.sol.L_r, m.sol.ℒ)
+                    m.sol.aggs.ŷ)
+    for (t, v) in [
+        ("\$g^w\$", m.sol.aggs.g_w * 100),
+        ("\$L^r\$", m.sol.L_r * 100),
+        ("ℒ", m.sol.ℒ * 100)
+    ]
+        txt *= (@sprintf("   %s=%.2f", t, v) * "%")
+    end
+    return txt
 end
 
 end # module
