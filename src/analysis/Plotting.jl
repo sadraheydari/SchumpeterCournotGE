@@ -409,7 +409,7 @@ function plot_stationarity(sim::SimulationOutput; save = nothing)
     ln = (; legend = false, lw = 1.6, grid = true, xlabel = "")
     avg(x) = hline!([mean(x)]; ls = :dash, c = :red, lw = 1.5)
 
-    p1 = plot(a.period, a.g_w * 100;   title = "Growth rate \$g^w\$ (%)",       ln...); avg(a.g_w * 100)
+    p1 = plot(a.period, a.g_w * 100;   title = "Growth rate \$g\$ (%)",       ln...); avg(a.g_w * 100)
     p2 = plot(a.period, a.L_r * 100;   title = "Research Labour \$L^r\$ (%)",   ln...); avg(a.L_r * 100)
     p3 = plot(a.period, a.scriptL;     title = "Lerner index \$\\mathcal{L}\$", ln...); avg(a.scriptL)
     p4 = plot(a.period, a.markup;      title = "Markup \$\\mathcal{M}\$",       ln...); avg(a.markup)
