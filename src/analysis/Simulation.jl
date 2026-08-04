@@ -227,6 +227,7 @@ struct AggregatePaths
     period::Vector{Int}
     g_w::Vector{Float64}
     L_r::Vector{Float64}
+    r::Vector{Float64}           # r = (1 + g)^σ / β - 1
     scriptL::Vector{Float64}     # 𝓛
     markup::Vector{Float64}      # 𝓜 = 1/(1-𝓛)
     yhat::Vector{Float64}        # ŷ = (1-L^r)/(1-𝓛)
@@ -243,7 +244,7 @@ end
 function AggregatePaths(P::Int, n::Int)
     v() = Vector{Float64}(undef, P)
     return AggregatePaths(Vector{Int}(undef, P),
-                          v(), v(), v(), v(), v(),      # g_w … yhat
+                          v(), v(), v(), v(), v(), v(), # g_w … r
                           v(), v(), v(), v(), v(),      # A_star … n_active_mean
                           Matrix{Float64}(undef, P, n), # n_share
                           v(), v())                     # wage_check, outside_frac
@@ -481,6 +482,7 @@ function _run(model::DSIC, set::SimSettings, ::Val{N}) where {N}
                 agg.n_active_mean[pi] = sum(nact) / S
                 agg.wage_check[pi]    = wchk
                 agg.outside_frac[pi]  = sum(b_out) / (S * N)
+                agg.r[pi]             = (1.0 + agg.g_w[pi])^par.σ / par.β - 1.0
                 for k in 1:n
                     agg.n_share[pi, k] = count(==(k), nact) / S
                 end
@@ -552,6 +554,7 @@ function sim_report(o::SimulationOutput)
     println("SIMULATION   ", o.settings)
     println("═"^92)
     _line("g_w", a.g_w; d = 6)
+    _line("r", a.r; d = 6)
     _line("L^r", a.L_r; d = 6)
     _line("𝓛   aggregate Lerner", a.scriptL)
     _line("𝓜 = 1/(1-𝓛)", a.markup)
