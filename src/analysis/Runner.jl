@@ -597,7 +597,7 @@ res = run_model(n = 2, η̄ = 2.0)
 plot_results(res); plot_paths(res)
 ```
 """
-function run_model(model::DSIC; thin::Int = 1, progress::Bool = true,
+function run_model(model::DSIC; thin::Int = 10, progress::Bool = true,
                      verbose::Bool = true, kwargs...)
     ws    = VFIWorkspace(model)
     draws = SimulationDraws(model)
