@@ -23,16 +23,35 @@ divides `p` by `c`. So after innovation, with profiles `ã = γ^s·a`,
 
     1 + g_w,t = [ ∫ p(ã)^{1-μ} dj ]^{1/(μ-1)} ,        a_{t+1} = ã / (1+g_w,t)
 
-leaves `∫p^{1-μ} = 1` intact. This is the draft's wage equation, applied
-one period at a time, and it handles entry and exit automatically since `p`
-is recomputed from the new profile.
+leaves `∫p^{1-μ} = 1` intact. This is the draft's wage equation, applied one
+period at a time, and it handles entry and exit automatically since `p` is
+recomputed from the new profile.
 
 The alternative — fixing `g_w` in the transition and comparing the implied
 growth — looks reasonable and is empty: at a stationary distribution the
 implied growth equals the assumed growth *identically*, for any `g_w` that
-admits a stationary distribution. It reports a zero gap and tells you
-nothing. Here the guessed `g_w` enters only through the **policy**, via the
-discount factor, so the map from guess to outcome has real content.
+admits a stationary distribution. Here the guessed `g_w` enters only through
+the **policy**, so the map from guess to outcome has real content.
+
+# Layout and parallelism
+
+The panel is stored **firm-major**, `A[i, s]` for firm `i` of industry `s`,
+so an industry's whole profile occupies `8n` contiguous bytes — one cache
+line for `n ≤ 8`. The obvious `S × n` layout puts an industry's
+productivities `8S` bytes apart (16 KB at `S = 2000`), so every `firm_view`
+would touch `n` separate cache lines and be called `n` times per industry.
+The shock array `u[i, s, t]` follows the same convention.
+
+Within a period, industries are independent: industry `s` reads and writes
+only column `s` and its own shocks. The industry loop is therefore threaded.
+The period loop is not, and cannot be — `A` at `t+1` depends on `t`.
+
+**Reductions stay deterministic.** Each thread writes per-industry
+contributions into preallocated buffers at distinct indices; the sums are
+then taken sequentially over those buffers. Accumulating into per-thread
+partials instead would make the answer depend on `Threads.nthreads()`
+through the order of floating-point addition — which would defeat the
+common random numbers below, whose whole purpose is a deterministic map.
 
 # Common random numbers
 
@@ -47,8 +66,8 @@ aggregates, which is what a fixed-point iteration assumes.
 
   * `g_w` — from the renormalisation above, averaged over the post-burn-in
     periods
-  * `L_r` — total research labour, `n` times the average per firm, since
-    every industry has `n` firms and industries have unit mass
+  * `L_r` — total research labour, since every industry has `n` firms and
+    industries have unit mass
   * `ℒ` — the output-share-weighted Lerner index, `∫s(j)ℓ(j)dj / ∫s(j)dj`
   * `ŷ` — `(1-L_r)/(1-ℒ)`, the demand shifter that follows from them
 """
@@ -77,16 +96,19 @@ export SimulationDraws, SimulationResult, simulate_economy!,
 Every random number the simulation will ever need, drawn once from
 `settings.seed`.
 
-  * `u[s, i, t]` — the uniform that decides whether firm `i` of industry `s`
+  * `u[i, s, t]` — the uniform deciding whether firm `i` of industry `s`
     innovates in period `t`
-  * `a0[s, i]` — the starting productivity profile
+  * `a0[i, s]` — the starting productivity profile
+
+Both are **firm-major**: an industry's entries are contiguous. See the
+module docstring.
 
 Reused unchanged across outer iterations, which is what makes the map from
 guessed aggregates to implied aggregates deterministic. Build one per model
 and hold on to it; rebuilding mid-solve reintroduces the noise.
 
-Size is `n_sims × n × n_periods` doubles — at 1000 industries, 5 firms and
-500 periods that is 20 MB.
+Size is `n × n_sims × n_periods` doubles — at 5 firms, 1000 industries and
+500 periods, 20 MB.
 """
 struct SimulationDraws
     u::Array{Float64,3}
@@ -97,11 +119,11 @@ function SimulationDraws(model::DSIC)
     set = model.settings
     n   = state_length(model.params)
     rng = MersenneTwister(set.seed)
-    u   = rand(rng, set.n_sims, n, set.n_periods)
+    u   = rand(rng, n, set.n_sims, set.n_periods)
     # start spread over the grid; the level is fixed below and burn-in
     # washes out whatever is left of the initial condition
     lo, hi = extrema(xaxis(model.grid))
-    a0 = lo .+ (hi - lo) .* rand(rng, set.n_sims, n)
+    a0 = lo .+ (hi - lo) .* rand(rng, n, set.n_sims)
     return SimulationDraws(u, a0)
 end
 
@@ -114,16 +136,18 @@ end
 
 Industry `s` as its firm `i` sees it: that firm's productivity first, the
 others after — the layout `StateArray` and the policy interpolant expect.
+
+`A` is firm-major, `A[i, s]`, so this reads one contiguous run of memory.
 Allocation-free.
 """
 @inline function firm_view(A::Matrix{Float64}, s::Int, i::Int,
                            ::Val{N}) where {N}
     return ntuple(Val(N)) do k
         if k == 1
-            @inbounds A[s, i]
+            @inbounds A[i, s]
         else
             j = k - 1
-            @inbounds j < i ? A[s, j] : A[s, j + 1]
+            @inbounds j < i ? A[j, s] : A[j + 1, s]
         end
     end
 end
@@ -132,7 +156,7 @@ end
     industry_stats(profile, μ, Val(N)) -> (share, lerner_sum, n_active)
 
 The industry's share of aggregate output `s(j) = p^{1-μ}`, the sum of its
-firms' Lerner coefficients `∑ℓ_i`, and how many firms are active.
+firms' Lerner coefficients `∑ℓᵢ`, and how many firms are active.
 
 One participation scan for the whole industry, then `n` cheap per-firm
 evaluations — rather than calling `lerner_coefficient` once per firm and
@@ -157,7 +181,42 @@ redoing the scan each time.
 end
 
 # =====================================================================
-#  3. The simulation
+#  3. Level normalisation
+# =====================================================================
+
+"""
+    level_shares!(buf, A, μ, S, Val(N))
+
+Write each industry's `p^{1-μ}` into `buf`, in parallel. Writes only, one
+index per industry, so no reduction happens here and the result does not
+depend on the thread count.
+"""
+function level_shares!(buf::Vector{Float64}, A::Matrix{Float64}, μ::Float64,
+                       S::Int, ::Val{N}) where {N}
+    Threads.@threads for s in 1:S
+        @inbounds buf[s] = industry_stats(firm_view(A, s, 1, Val(N)), μ, Val(N)).share
+    end
+    return buf
+end
+
+"""
+    _level_factor(A, μ, S, Val(N); buf) -> Float64
+
+`[∫p^{1-μ}dj]^{1/(μ-1)}`, the factor every productivity must be divided by
+for the price index to normalise to one. Dividing by it is exactly the
+draft's wage equation, and the factor itself is `1 + g_w` for the period.
+
+The sum runs sequentially over `buf`, so the result is bit-identical
+whatever `Threads.nthreads()` happens to be.
+"""
+function _level_factor(A::Matrix{Float64}, μ::Float64, S::Int, ::Val{N};
+                       buf::Vector{Float64} = Vector{Float64}(undef, S)) where {N}
+    level_shares!(buf, A, μ, S, Val(N))
+    return (sum(buf) / S)^(1 / (μ - 1))
+end
+
+# =====================================================================
+#  4. The simulation
 # =====================================================================
 
 """
@@ -185,6 +244,20 @@ Base.show(io::IO, r::SimulationResult) = @printf(io,
     "SimulationResult(g_w=%.6f, L_r=%.6f, ℒ=%.6f, ŷ=%.6f, ñ=%.3f, outside=%.1f%%)",
     r.g_w, r.L_r, r.ℒ, r.ŷ, r.n_active, 100 * r.outside_frac)
 
+# Per-industry scratch, allocated once per simulation and reused each period.
+struct SimBuffers
+    post_share::Vector{Float64}   # p^{1-μ} after innovation — the level factor
+    pre_share::Vector{Float64}    # p^{1-μ} before innovation — the ℒ weight
+    lerner::Vector{Float64}       # ∑ᵢ ℓᵢ before innovation
+    research::Vector{Float64}     # ∑ᵢ lᵢ
+    n_active::Vector{Float64}
+    a_sum::Vector{Float64}
+    outside::Vector{Int}
+end
+
+SimBuffers(S::Int) = SimBuffers(Vector{Float64}(undef, S), zeros(S), zeros(S),
+                                zeros(S), zeros(S), zeros(S), zeros(Int, S))
+
 """
     simulate_economy!(model::DSIC, draws::SimulationDraws) -> SimulationResult
 
@@ -196,8 +269,9 @@ Each period, for every industry: read each firm's research off the policy
 innovates, renormalise so that `∫p^{1-μ} = 1` still holds, and record the
 growth that renormalisation required.
 
-Statistics are accumulated only after `burnin` periods, by which point the
-initial condition has washed out. `model.sol` is not modified.
+The industry loop is threaded; the period loop is sequential by necessity.
+Statistics are accumulated only after `burnin` periods. `model.sol` is not
+modified.
 """
 function simulate_economy!(model::DSIC, draws::SimulationDraws)
     N = state_length(model.params)
@@ -211,14 +285,15 @@ function _simulate(model::DSIC, draws::SimulationDraws, ::Val{N}) where {N}
     π̃    = Interpolant(sol.policy, model.grid)      # by reference: stays current
     lo, hi = extrema(xaxis(model.grid))
 
-    A = copy(draws.a0)                              # industries × firms
     S = set.n_sims
+    A = copy(draws.a0)                              # firms × industries
+    b = SimBuffers(S)
 
     # put the starting panel on the equilibrium level, so period one is not
     # spent undoing an arbitrary initial scale
-    A ./= _level_factor(A, μ, S, Val(N))
+    A ./= _level_factor(A, μ, S, Val(N); buf = b.post_share)
 
-    kept      = 0                                   # post-burn-in periods
+    kept      = 0
     acc_gw    = 0.0
     acc_Lr    = 0.0
     acc_num_ℒ = 0.0
@@ -231,52 +306,54 @@ function _simulate(model::DSIC, draws::SimulationDraws, ::Val{N}) where {N}
     for t in 1:set.n_periods
         record = t > set.burnin
 
-        # --- state-dependent quantities, before anyone innovates ------
-        Lr_t = 0.0
-        num_ℒ = den_ℒ = 0.0
-        nact_t = amean_t = 0.0
-
-        @inbounds for s in 1:S
-            profile = firm_view(A, s, 1, Val(N))    # firm 1's view = the profile
-            st = industry_stats(profile, μ, Val(N))
-
+        Threads.@threads for s in 1:S
+            # --- before anyone innovates ------------------------------
             if record
-                num_ℒ  += st.share * st.lerner_sum
-                den_ℒ  += st.share
-                nact_t += st.n_active
+                st = industry_stats(firm_view(A, s, 1, Val(N)), μ, Val(N))
+                @inbounds begin
+                    b.pre_share[s] = st.share
+                    b.lerner[s]    = st.lerner_sum
+                    b.n_active[s]  = st.n_active
+                    b.research[s]  = 0.0
+                    b.a_sum[s]     = 0.0
+                    b.outside[s]   = 0
+                end
             end
 
-            for i in 1:N
+            @inbounds for i in 1:N
                 view_i = firm_view(A, s, i, Val(N))
+                a_own  = view_i[1]
                 l      = max(π̃(view_i), 0.0)
-                η      = innovation_prob(l, view_i[1], haz)
+                η      = innovation_prob(l, a_own, haz)
 
                 if record
-                    Lr_t   += l
-                    amean_t += view_i[1]
-                    seen   += 1
-                    (lo <= view_i[1] <= hi) || (outside += 1)
+                    b.research[s] += l
+                    b.a_sum[s]    += a_own
+                    (lo <= a_own <= hi) || (b.outside[s] += 1)
                 end
 
-                # --- innovate (raw, before renormalising) -------------
-                if draws.u[s, i, t] < η
-                    A[s, i] *= γ
-                end
+                draws.u[i, s, t] < η && (A[i, s] *= γ)
             end
+
+            # --- and after, for the renormalisation -------------------
+            @inbounds b.post_share[s] =
+                industry_stats(firm_view(A, s, 1, Val(N)), μ, Val(N)).share
         end
 
-        # --- renormalise: this is what defines w, and hence g_w -------
-        factor = _level_factor(A, μ, S, Val(N))
+        # --- sequential reductions: independent of the thread count ---
+        factor = (sum(b.post_share) / S)^(1 / (μ - 1))
         A    ./= factor
 
         if record
             kept      += 1
             acc_gw    += factor - 1.0               # 1 + g_w,t = factor
-            acc_Lr    += Lr_t / S                   # per industry: ∑ᵢ lᵢ
-            acc_num_ℒ += num_ℒ / S
-            acc_den_ℒ += den_ℒ / S
-            acc_nact  += nact_t / S
-            acc_amean += amean_t / (S * N)
+            acc_Lr    += sum(b.research) / S
+            acc_num_ℒ += _dotsum(b.pre_share, b.lerner) / S
+            acc_den_ℒ += sum(b.pre_share) / S
+            acc_nact  += sum(b.n_active) / S
+            acc_amean += sum(b.a_sum) / (S * N)
+            outside   += sum(b.outside)
+            seen      += S * N
         end
     end
 
@@ -309,24 +386,17 @@ function _simulate(model::DSIC, draws::SimulationDraws, ::Val{N}) where {N}
                             acc_nact / kept, acc_amean / kept, frac_out)
 end
 
-"""
-    _level_factor(A, μ, S, Val(N)) -> Float64
-
-`[∫p^{1-μ}dj]^{1/(μ-1)}`, the factor every productivity must be divided by
-for the price index to normalise to one. Dividing by it is exactly the
-draft's wage equation.
-"""
-@inline function _level_factor(A::Matrix{Float64}, μ::Float64, S::Int,
-                               ::Val{N}) where {N}
-    total = 0.0
-    @inbounds for s in 1:S
-        total += industry_stats(firm_view(A, s, 1, Val(N)), μ, Val(N)).share
+"Sequential dot product, so the reduction order is fixed."
+@inline function _dotsum(x::Vector{Float64}, y::Vector{Float64})
+    s = 0.0
+    @inbounds @simd for i in eachindex(x, y)
+        s += x[i] * y[i]
     end
-    return (total / S)^(1 / (μ - 1))
+    return s
 end
 
 # =====================================================================
-#  4. The outer loop
+#  5. The outer loop
 # =====================================================================
 
 """
