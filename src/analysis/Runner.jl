@@ -32,9 +32,20 @@ you can see whether they do — if not, `burnin` is too short.
 
 They answer different questions and neither substitutes for the other.
 
+# Recording and threading
+
+The panel's storage is preallocated: the recorded periods are known before
+the simulation starts, so every row has a computed index and the industry
+loop can be threaded exactly as in `GeneralEquilibrium`. Growing shared
+vectors with `push!` from several threads would corrupt them outright, and
+even single-threaded it would reallocate repeatedly.
+
+Rows are laid out period-major, then industry, then firm — which is what
+[`by_period`](@ref) relies on to group in a single pass.
+
 Both panels reuse `GeneralEquilibrium`'s own `firm_view`, `industry_stats`
-and `_level_factor`, so the recorded dynamics cannot drift from the ones the
-solver used.
+and level normalisation, so the recorded dynamics cannot drift from the
+ones the solver used.
 """
 module Runner
 
@@ -126,8 +137,9 @@ function solve_model!(model::DSIC, ws::VFIWorkspace, draws::SimulationDraws;
     if progress
         @printf("Λ = β(1+g_y)^-σ·γ = %.4f %s   (floor on g_y: %.5f)\n",
                 Λ, Λ < 1 ? "✓" : "✗", feasible_growth_floor(model.params))
-        @printf("n = %d   state space %d × %d = %d\n\n", model.params.n,
-                size(model.sol.V)..., length(model.sol.V))
+        @printf("n = %d   state space %d × %d = %d   threads = %d\n\n",
+                model.params.n, size(model.sol.V)..., length(model.sol.V),
+                Threads.nthreads())
     end
 
     trace = NamedTuple[]
@@ -173,10 +185,6 @@ many. `fperiod` labels each row; `rel_pos` (`aᵢ/ã`), `research` (`l`),
 Rows are stored period-major, so all rows for a given period are
 contiguous — which is what lets [`by_period`](@ref) group them in one pass
 without sorting or hashing.
-
-Use [`by_period`](@ref) to collapse an industry- or firm-level vector into a
-per-period statistic of your choosing, and the period-level fields directly
-for aggregates the simulation computes anyway.
 """
 struct Panel
     # --- industry rows ------------------------------------------------
@@ -200,9 +208,40 @@ struct Panel
     yhat::Vector{Float64}
 end
 
-Panel() = Panel(Int[], Float64[], Int[], Float64[], Float64[], Float64[],
-                Int[], Float64[], Float64[], Float64[], Float64[],
-                Int[], Float64[], Float64[], Float64[], Float64[])
+"""
+    Panel(rec_periods, S, N)
+
+Preallocate for `length(rec_periods)` recorded periods, `S` industries and
+`N` firms. Every row's index is then known in advance, which is what lets
+the industry loop be threaded.
+"""
+function Panel(rec_periods::Vector{Int}, S::Int, N::Int)
+    P  = length(rec_periods)
+    ni = P * S            # industry rows
+    nf = ni * N           # firm rows
+    per  = Vector{Int}(undef, ni)
+    fper = Vector{Int}(undef, nf)
+    @inbounds for pi in 1:P, s in 1:S
+        row = (pi - 1) * S + s
+        per[row] = rec_periods[pi]
+        base = (row - 1) * N
+        for i in 1:N
+            fper[base + i] = rec_periods[pi]
+        end
+    end
+    return Panel(per,
+                 Vector{Float64}(undef, ni), Vector{Int}(undef, ni),
+                 Vector{Float64}(undef, ni), Vector{Float64}(undef, ni),
+                 Vector{Float64}(undef, ni),
+                 fper,
+                 Vector{Float64}(undef, nf), Vector{Float64}(undef, nf),
+                 Vector{Float64}(undef, nf), Vector{Float64}(undef, nf),
+                 copy(rec_periods),
+                 Vector{Float64}(undef, P), Vector{Float64}(undef, P),
+                 Vector{Float64}(undef, P), Vector{Float64}(undef, P))
+end
+
+Panel() = Panel(Int[], 0, 0)
 
 Base.length(p::Panel) = length(p.lerner)
 
@@ -219,19 +258,21 @@ Base.show(io::IO, p::Panel) =
               length(p.periods), " periods)")
 
 """
-    simulate_panel(model, draws; a_init = nothing, thin = 5) -> Panel
+    simulate_panel(model, draws; a_init = nothing, thin = 1) -> Panel
 
 Run the economy under the converged policy and keep the cross-section.
 
-Records every `thin`-th post-burn-in period. **Set `thin = 1` for
-time-series plots**; the default thins to keep the pooled histograms
-manageable, but a thinned path is a coarse path.
+Records every `thin`-th post-burn-in period. `thin = 1` gives a dense path,
+which is what the time-series plots want; raise it if only the pooled
+distributions matter and memory is tight.
 
-Pass `a_init` to start from a different cross-section; the level is
-renormalised first either way, so only the shape of what you pass matters.
+Pass `a_init` to start from a different cross-section (firm-major, `N × S`);
+the level is renormalised first either way, so only the shape of what you
+pass matters.
 """
 function simulate_panel(model::DSIC, draws::SimulationDraws;
-                        a_init = nothing, thin::Int = 5)
+                        a_init = nothing, thin::Int = 1)
+    thin >= 1 || throw(ArgumentError("thin must be ≥ 1 (got $thin)"))
     N = state_length(model.params)
     return _panel(model, draws, a_init, thin, Val(N))
 end
@@ -244,69 +285,97 @@ function _panel(model::DSIC, draws::SimulationDraws, a_init, thin::Int,
     π̃    = Interpolant(sol.policy, model.grid)
     S    = set.n_sims
 
-    A = a_init === nothing ? copy(draws.a0) : copy(a_init)
-    A ./= GE._level_factor(A, μ, S, Val(N))
+    rec = [t for t in 1:set.n_periods
+           if t > set.burnin && (t - set.burnin) % thin == 0]
+    p   = Panel(rec, S, N)
+    isrec = falses(set.n_periods)
+    slot  = zeros(Int, set.n_periods)
+    for (pi, t) in enumerate(rec)
+        isrec[t] = true
+        slot[t]  = pi
+    end
 
-    p = Panel()
+    A = a_init === nothing ? copy(draws.a0) : copy(a_init)
+    size(A) == (N, S) || throw(DimensionMismatch(
+        "the panel must be firm-major, $N × $S (got $(size(A)))"))
+
+    shares = Vector{Float64}(undef, S)      # scratch for the level factor
+    lrbuf  = zeros(S)                       # research, for the period total
+    A    ./= (sum(GE.level_shares!(shares, A, μ, S, Val(N))) / S)^(1 / (μ - 1))
 
     for t in 1:set.n_periods
-        record = t > set.burnin && (t - set.burnin) % thin == 0
+        record = isrec[t]
+        pi     = slot[t]
 
-        # per-period accumulators
-        Lr_t = 0.0
-        num_ℒ = den_ℒ = 0.0
-
-        for s in 1:S
+        Threads.@threads for s in 1:S
             if record
+                row  = (pi - 1) * S + s
+                base = (row - 1) * N
                 profile = GE.firm_view(A, s, 1, Val(N))
                 st   = GE.industry_stats(profile, μ, Val(N))
                 meta = market_share_with_meta(profile, μ)
 
-                push!(p.period, t)
-                push!(p.lerner, st.lerner_sum)
-                push!(p.n_active, st.n_active)
-                push!(p.a_tilde, meta.a_tilde)
-                push!(p.price, meta.p)
+                @inbounds begin
+                    p.lerner[row]   = st.lerner_sum
+                    p.n_active[row] = st.n_active
+                    p.a_tilde[row]  = meta.a_tilde
+                    p.price[row]    = meta.p
 
-                num_ℒ += st.share * st.lerner_sum
-                den_ℒ += st.share
-
-                lo = hi = A[s, 1]
-                for i in 1:N
-                    a_i = A[s, i]
-                    lo = min(lo, a_i); hi = max(hi, a_i)
-                    push!(p.fperiod, t)
-                    push!(p.rel_pos, a_i / meta.a_tilde)
-                    push!(p.share, max(0.0, μ * (1 - meta.a_tilde / (meta.m * a_i))))
+                    lo = hi = A[1, s]
+                    for i in 1:N
+                        a_i = A[i, s]
+                        lo = min(lo, a_i); hi = max(hi, a_i)
+                        p.rel_pos[base + i] = a_i / meta.a_tilde
+                        p.share[base + i] =
+                            max(0.0, μ * (1 - meta.a_tilde / (meta.m * a_i)))
+                    end
+                    p.gap[row] = hi / lo
                 end
-                push!(p.gap, hi / lo)
             end
 
-            for i in 1:N
+            lr_s = 0.0
+            @inbounds for i in 1:N
                 v = GE.firm_view(A, s, i, Val(N))
                 l = max(π̃(v), 0.0)
                 η = innovation_prob(l, v[1], haz)
                 if record
-                    push!(p.research, l)
-                    push!(p.eta, η)
-                    Lr_t += l
+                    row  = (pi - 1) * S + s
+                    base = (row - 1) * N
+                    p.research[base + i] = l
+                    p.eta[base + i]      = η
+                    lr_s += l
                 end
-                draws.u[s, i, t] < η && (A[s, i] *= γ)
+                draws.u[i, s, t] < η && (A[i, s] *= γ)
             end
+            @inbounds lrbuf[s] = lr_s
+
+            @inbounds shares[s] =
+                GE.industry_stats(GE.firm_view(A, s, 1, Val(N)), μ, Val(N)).share
         end
 
-        # the renormalisation that defines w — and hence this period's g_w
-        factor = GE._level_factor(A, μ, S, Val(N))
+        # sequential reductions — independent of the thread count
+        factor = (sum(shares) / S)^(1 / (μ - 1))
         A    ./= factor
 
         if record
-            L_r = Lr_t / S
-            ℒ   = den_ℒ > 0 ? num_ℒ / den_ℒ : NaN
-            push!(p.periods, t)
-            push!(p.g_w, factor - 1.0)
-            push!(p.L_r, L_r)
-            push!(p.scriptL, ℒ)
-            push!(p.yhat, (1 - L_r) / (1 - ℒ))
+            rows = ((pi - 1) * S + 1):(pi * S)
+            num  = 0.0
+            den  = 0.0
+            @inbounds for r in rows
+                # p^{1-μ} of the pre-innovation profile, recomputed from the
+                # stored price so the ℒ weight matches what was recorded
+                w = p.price[r]^(1 - μ)
+                num += w * p.lerner[r]
+                den += w
+            end
+            L_r = sum(lrbuf) / S
+            ℒ   = den > 0 ? num / den : NaN
+            @inbounds begin
+                p.g_w[pi]     = factor - 1.0
+                p.L_r[pi]     = L_r
+                p.scriptL[pi] = ℒ
+                p.yhat[pi]    = (1 - L_r) / (1 - ℒ)
+            end
         end
     end
 
@@ -314,19 +383,19 @@ function _panel(model::DSIC, draws::SimulationDraws, a_init, thin::Int,
 end
 
 """
-    symmetric_start_panel(model, draws; thin = 5) -> Panel
+    symmetric_start_panel(model, draws; thin = 1) -> Panel
 
 The same economy, but every industry begins with all `n` firms at identical
 productivity — the geometric middle of the grid. They come apart only
 because some draw a successful innovation and others do not.
 """
 function symmetric_start_panel(model::DSIC, draws::SimulationDraws;
-                               thin::Int = 5)
+                               thin::Int = 1)
     N  = state_length(model.params)
     S  = model.settings.n_sims
     lo, hi = extrema(xaxis(model.grid))
     a0 = sqrt(lo * hi)
-    return simulate_panel(model, draws; a_init = fill(a0, S, N), thin = thin)
+    return simulate_panel(model, draws; a_init = fill(a0, N, S), thin = thin)
 end
 
 # =====================================================================
@@ -521,27 +590,25 @@ end
 Build, solve, simulate, report. Keywords go to [`build_model`](@ref).
 
 `thin = 1` records every post-burn-in period, which is what the time-series
-plots want. Raise it if the panel is large and only the pooled
-distributions matter.
+plots want.
 
 ```julia
 res = run_model(n = 2, η̄ = 2.0)
-res = run_model(n = 3, k = 40, ε = 0.9)
-plot_results(res)
-plot_paths(res)
+plot_results(res); plot_paths(res)
 ```
 """
-function run_model(model:: DSIC; thin::Int = 1, progress::Bool = true,
+function run_model(model::DSIC; thin::Int = 1, progress::Bool = true,
                      verbose::Bool = true, kwargs...)
     ws    = VFIWorkspace(model)
     draws = SimulationDraws(model)
 
-    status, trace = solve_model!(model, ws, draws; progress = false)
+    status, trace = solve_model!(model, ws, draws; progress = progress)
 
-    panel = simulate_panel(model, draws; thin = 1)
-    sym   = symmetric_start_panel(model, draws; thin = 1)
+    panel = simulate_panel(model, draws; thin = thin)
+    sym   = symmetric_start_panel(model, draws; thin = thin)
 
     res = ModelResult(model, ws, draws, status, trace, panel, sym)
+    verbose && report(res)
     return res
 end
 
