@@ -73,7 +73,6 @@ include("economics/ResearchPolicyFOC.jl")
 using .ResearchPolicyFOC
 
 # --- solvers ----------------------------------------------------------
-
 include("solver/VFI.jl")
 using .ValueIteration
 
@@ -87,6 +86,11 @@ using .GeneralEquilibrium
 include("analysis/Runner.jl")
 using .Runner
 
+include("analysis/Simulation.jl")
+using .Simulation
+
+# `Plots` dominates load time and nothing else needs it. Comment this pair
+# out to use the package headless; everything but `plot_results` still works.
 include("analysis/Plotting.jl")
 using .Plotting
 
@@ -103,7 +107,7 @@ using .Plotting
 const _SUBMODULES = (SymStateArrays, StateGrids, DSICModel, ProgressBars,
                      StaticMarket, ResearchPolicyFOC, ValueIteration,
                      SymPolicyEquilibrium, GeneralEquilibrium, Runner,
-                     Plotting)
+                     Simulation, Plotting)
 
 let seen = Dict{Symbol,Module}()
     for m in _SUBMODULES, nm in names(m)
