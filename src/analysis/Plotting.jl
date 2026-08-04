@@ -11,7 +11,11 @@ running headless.
     plot_paths(res)        # the sample path, period by period
     plot_convergence(res)  # the solver's own convergence
 
-Three different pictures of three different things:
+    sim = run_simulation(res.model, SimSettings())
+    plot_stationarity(sim; save = "output/baseline")
+    plot_industry(sim;     save = "output/baseline")
+
+Five pictures of four different things:
 
   * [`plot_results`](@ref) — the ergodic distribution, pooled over periods.
     What the economy looks like.
@@ -19,6 +23,18 @@ Three different pictures of three different things:
     the converged policy. How the economy fluctuates along a sample path.
   * [`plot_convergence`](@ref) — one point per aggregate-loop iteration.
     How the *solver* got there; nothing to do with the economics.
+  * [`plot_stationarity`](@ref) and [`plot_industry`](@ref) — the same two
+    questions asked of a standalone [`run_simulation`](@ref) rather than of
+    a `ModelResult`, so a solved model can be simulated at several sample
+    sizes and each plotted on its own.
+
+# Saving
+
+The first three take `save` as a plain filename and hand it to `savefig`.
+The two simulation plots take `save` as a *directory-plus-prefix* and write
+a timestamped pair — the figure and a `.toml` of the whole run
+configuration under the identical name — so a figure on disk can always be
+traced back to the parameters that produced it.
 """
 module Plotting
 
@@ -29,8 +45,10 @@ using ..DSICModel
 using ..StaticMarket
 using ..ResearchPolicyFOC
 using ..Runner
+using ..Simulation
 
-export plot_results, plot_paths, plot_convergence, policy_surface, plot_policy
+export plot_results, plot_paths, plot_convergence, policy_surface,
+       plot_policy, plot_stationarity, plot_industry
 
 # =====================================================================
 #  The policy surface
@@ -172,6 +190,7 @@ end
 # =====================================================================
 
 """
+    plot_paths(m::DSIC, p::Panel; save = nothing, extra_text = "") -> Plot
     plot_paths(res::ModelResult; save = nothing, panel = :ergodic) -> Plot
 
 Nine panels tracing the economy period by period after burn-in, under the
@@ -192,7 +211,9 @@ gap between mean and median is the skewness of the cross-section, and it
 moves: a widening gap in the Lerner coefficient means market power is
 concentrating in fewer industries even when the average is flat.
 
-Set `panel = :symmetric` to trace the run that starts every industry level
+The two-argument form takes a bare `Panel`, so a panel simulated by hand can
+be plotted without a `ModelResult` around it. Set `panel = :symmetric` on
+the `ModelResult` form to trace the run that starts every industry level
 instead. Requires `thin = 1` in `run_model` for a dense path.
 """
 function plot_paths(m::DSIC, p::Panel; save = nothing, extra_text::String = "")
@@ -254,29 +275,33 @@ end
 function plot_paths(res::ModelResult; save = nothing, panel::Symbol = :ergodic)
     panel in (:ergodic, :symmetric) || throw(ArgumentError(
         "panel must be :ergodic or :symmetric, got $(repr(panel))"))
-    p   = panel === :ergodic ? res.panel : res.sym_panel
+    p = panel === :ergodic ? res.panel : res.sym_panel
     m = res.model
     return plot_paths(m, p; save = save,
-    extra_txt = @sprintf("   |   %s start, %d periods",
-                                 panel === :ergodic ? "ergodic" : "symmetric",
-                                 npanel_periods(p)))
+                      extra_text = @sprintf("   |   %s start, %d periods",
+                                            panel === :ergodic ? "ergodic" : "symmetric",
+                                            npanel_periods(p)))
 end
 
 """
-    _moment_panel(labels, x, title, ylabel) -> Plot
+    _moment_panel(labels, x, title, ylabel; kwargs...) -> Plot
 
 Mean and median of `x` period by period, on one axis. The two together say
 more than either alone: their gap is the skewness of the cross-section, and
 a widening gap means the distribution is stretching even when its centre is
 still.
+
+`kwargs` go to the first `plot` call, where the axis is created, so an
+`xlabel` or `yscale` passed in overrides the defaults set here rather than
+being applied after the fact.
 """
 function _moment_panel(labels, x, title, ylab; kwargs...)
     ts, avg = by_period(labels, x, mean)
     _,  med = by_period(labels, x, median)
     p = plot(ts, avg; label = "mean", lw = 1.6, c = 1,
              title = title, xlabel = "period", ylabel = ylab,
-             legend = :best, grid = true)
-    plot!(p, ts, med; label = "median", lw = 1.6, c = 2, ls = :dashdot, kwargs...)
+             legend = :best, grid = true, kwargs...)
+    plot!(p, ts, med; label = "median", lw = 1.6, c = 2, ls = :dashdot)
     return p
 end
 
@@ -331,6 +356,155 @@ function plot_convergence(res::ModelResult; save = nothing)
 end
 
 # =====================================================================
+#  Simulation output
+#
+#  These take a `SimulationOutput` rather than a `ModelResult`: the
+#  simulation is run separately from the solve, so a solved model can be
+#  simulated at several sample sizes and each plotted on its own.
+#
+#  `save = "output/baseline"` writes
+#     output/baseline_<tag>_<timestamp>.png
+#     output/baseline_<tag>_<timestamp>.toml
+#  the second holding the full run configuration, so a figure on disk can
+#  always be traced back to the parameters that produced it.
+# =====================================================================
+
+"""
+    _save_figure(plt, save, tag, sim) -> String
+
+Write `plt` and its configuration under one timestamped stem. The stem is
+computed **once** so the two files pair exactly; calling `artifact_stem`
+twice would stamp different seconds and silently separate them.
+"""
+function _save_figure(plt, save, tag::AbstractString, sim::SimulationOutput)
+    stem = artifact_stem(save, tag)
+    savefig(plt, stem * ".png")
+    write_run_config(stem * ".toml", sim)
+    @info "saved figure" figure = stem * ".png" config = stem * ".toml"
+    return stem
+end
+
+"""
+    plot_stationarity(sim::SimulationOutput; save = nothing) -> Plot
+
+Seven stacked panels of the aggregates over time, each with its own mean
+drawn in — a stationarity check.
+
+What you are looking for is fluctuation *around* the dashed line with no
+trend. A drift means burn-in ended too early and the panel is still
+travelling toward its ergodic distribution, in which case every
+cross-sectional moment reported elsewhere is contaminated.
+
+Productivity indices are divided by `𝓜 = 1/(1-𝓛)` to convert from wage
+units to baseline units — the bridge `a = aʷ/𝓜`.
+
+Pass `save = "output/baseline"` to write the figure and a matching `.toml`
+of the run configuration.
+"""
+function plot_stationarity(sim::SimulationOutput; save = nothing)
+    a  = sim.agg
+    n  = sim.params.n
+    ℳ = mean(a.markup)
+
+    ln = (; legend = false, lw = 1.6, grid = true, xlabel = "")
+    avg(x) = hline!([mean(x)]; ls = :dash, c = :red, lw = 1.5)
+
+    p1 = plot(a.period, a.g_w * 100;   title = "Growth rate \$g^w\$ (%)",       ln...); avg(a.g_w * 100)
+    p2 = plot(a.period, a.L_r * 100;   title = "Research Labour \$L^r\$ (%)",   ln...); avg(a.L_r * 100)
+    p3 = plot(a.period, a.scriptL;     title = "Lerner index \$\\mathcal{L}\$", ln...); avg(a.scriptL)
+    p4 = plot(a.period, a.markup;      title = "Markup \$\\mathcal{M}\$",       ln...); avg(a.markup)
+    p5 = plot(a.period, a.A_star ./ ℳ; title = "Frontier index \$a^*\$",       ln...); avg(a.A_star ./ ℳ)
+
+    # the two wedges and their product
+    p6 = plot(a.period, a.Lambda_w * 100; label = "\$\\Lambda^w\$", lw = 1.6,
+              grid = true, title = "Efficiency Wedges (%)", xlabel = "",
+              legend = :best)
+    plot!(p6, a.period, a.Lambda_x * 100; label = "\$\\Lambda^x\$", lw = 1.6)
+    plot!(p6, a.period, a.Lambda_w .* a.Lambda_x * 100;
+          label = "\$\\Lambda\$", lw = 2, c = :black)
+
+    # active-firm shares, all ñ in one panel
+    p7 = plot(; title = "Share of industries by \$\\tilde{n}\$",
+                xlabel = "period", ylabel = "share", ylims = (0, 100),
+                legend = :best, grid = true)
+    for k in 1:n
+        plot!(p7, a.period, a.n_share[:, k] * 100; lw = 1.6, label = "ñ = $k")
+    end
+
+    plt = plot(p1, p2, p3, p4, p5, p6, p7; layout = (7, 1), size = (1000, 1500))
+    save === nothing || _save_figure(plt, save, "stationarity", sim)
+    return plt
+end
+
+"""
+    plot_industry(sim::SimulationOutput; save = nothing) -> Plot
+
+Six panels of the industry cross-section: the distributions of the Lerner
+index, the markup, the productive wedge and the frontier, then the mean and
+median of `ℓ(j)` and `Δ(j)` over time.
+
+The mean and median together are worth more than either alone — their gap
+is the skewness of the cross-section, so a widening gap means the
+distribution is stretching even when its centre is still.
+
+`Δ(j) ≥ 1` always, with equality when only frontier firms produce, so the
+mass to the right of the black line is the within-industry efficiency loss.
+
+Requires `store_industry = true` in the `SimSettings`.
+"""
+function plot_industry(sim::SimulationOutput; save = nothing)
+    a, ind = sim.agg, sim.industry
+    size(ind, 1) > 0 || throw(ArgumentError(
+        "this run stored no industry paths; re-run with " *
+        "SimSettings(store_industry = true)"))
+    ℳ = mean(a.markup)
+
+    h = (; normalize = :probability, bins = 40, grid = true,
+           ylabel = "probability")
+
+    q1 = histogram(vec(ind.lerner); title = "Industry Lerner  \$\\ell(j)\$",
+                   xlabel = "\$\\ell\$", label = "", h...)
+    vline!(q1, [mean(a.scriptL)]; ls = :dash, c = :red, lw = 2,
+           label = "\$\\mathcal{L}\$=$(round(mean(a.scriptL), digits = 3))")
+
+    q2 = histogram(vec(ind.markup); title = "Industry Markup  \$\\mathcal{M}(j)\$",
+                   xlabel = "\$\\mathcal{M}\$", label = "", h...)
+    vline!(q2, [mean(a.markup)]; ls = :dash, c = :red, lw = 2,
+           label = "\$\\mathcal{M}\$=$(round(mean(a.markup), digits = 3))")
+
+    q3 = histogram(vec(ind.delta);
+                   title = "Productive Wedge  \$\\Delta(j) = a_{\\max}/\\bar{a}\$",
+                   xlabel = "\$\\Delta\$", label = "", h...)
+    vline!(q3, [1.0]; ls = :dash, c = :black, lw = 1.5,
+           label = "\$\\Delta=1\$ (no wedge)")
+    vline!(q3, [mean(vec(ind.delta))]; ls = :dash, c = :red, lw = 2,
+           label = "\$\\mathrm{avg}(\\Delta)\$=$(round(mean(vec(ind.delta)), digits = 3))")
+
+    q4 = histogram(vec(ind.a_max ./ ℳ); title = "Frontier  \$a_{\\max}(j)\$",
+                   xlabel = "\$A_{\\max}\$", label = "", h...)
+
+    # time paths of the cross-sectional mean and median
+    med(x) = [median(view(x, t, :)) for t in 1:size(x, 1)]
+    mn(x)  = [mean(view(x, t, :))   for t in 1:size(x, 1)]
+
+    q5 = plot(a.period, mn(ind.lerner); label = "mean", lw = 1.6,
+              title = "\$\\ell(j)\$ over time", xlabel = "period",
+              ylabel = "\$\\ell\$", grid = true)
+    plot!(q5, a.period, med(ind.lerner); label = "median", lw = 1.6,
+          ls = :dashdot)
+
+    q6 = plot(a.period, mn(ind.delta); label = "mean", lw = 1.6,
+              title = "\$\\Delta(j)\$ over time", xlabel = "period",
+              ylabel = "\$\\Delta\$", grid = true)
+    plot!(q6, a.period, med(ind.delta); label = "median", lw = 1.6,
+          ls = :dashdot)
+
+    plt = plot(q1, q2, q3, q4, q5, q6; layout = (3, 2), size = (1000, 1000))
+    save === nothing || _save_figure(plt, save, "industry", sim)
+    return plt
+end
+
+# =====================================================================
 function _title(m::DSIC)
     par = m.params
     txt =  @sprintf("n=%d  γ=%.3f  θ=%.2f  ε=%.2f  η̄=%.2f  μ=%.2f  β=%.2f   |   \$\\hat{y}\$=%.3f",
@@ -346,8 +520,6 @@ function _title(m::DSIC)
     return txt
 end
 
-function _title(res::ModelResult)
-    return _title(res.model)
-end
+_title(res::ModelResult) = _title(res.model)
 
 end # module

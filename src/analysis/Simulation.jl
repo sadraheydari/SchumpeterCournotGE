@@ -28,7 +28,7 @@ aggregate-level objects period by period.
 
 **Aggregate, per period** (vectors):
 
-`g_w`, `L_r`, `scriptL` (`𝓛`), `markup` (`𝓜 = 1/(1-𝓛)`), `yhat`,
+`g_w`, `L_r`, `r`, `scriptL` (`𝓛`), `markup` (`𝓜 = 1/(1-𝓛)`), `yhat`,
 `A_star` (`A* = (∫A_max^{μ-1})^{1/(μ-1)}`),
 `A_within` (`(∫𝒜^{μ-1})^{1/(μ-1)}`),
 `Lambda_w`, `Lambda_x` — the two wedges of the efficiency decomposition —
@@ -63,7 +63,7 @@ how far the panel is from stationarity rather than validating `P`.
 """
 module Simulation
 
-using Random, Printf, Statistics, LinearAlgebra
+using Random, Printf, Statistics, LinearAlgebra, Dates, TOML
 
 using ..SymStateArrays
 using ..StateGrids
@@ -76,7 +76,8 @@ const GE = GeneralEquilibrium
 
 export SimSettings, IndustryPaths, AggregatePaths, SimulationOutput,
        run_simulation, industry_record, sim_report,
-       transition_matrix, stationary_distribution
+       transition_matrix, stationary_distribution,
+       artifact_stem, write_run_config
 
 # =====================================================================
 #  1. Settings
@@ -259,10 +260,16 @@ Everything one simulation produced. `agg` holds the aggregate paths,
 `industry` the cross-sections, `P` the `ñ` transition matrix with
 `stationary` its invariant distribution, and `n_counts` the raw transition
 counts behind `P`.
+
+`params`, `model_settings` and `aggs` record the model the run came from,
+so the output is self-describing: [`write_run_config`](@ref) can reproduce
+the whole configuration without the model being in scope.
 """
 struct SimulationOutput
     settings::SimSettings
     params::Params
+    model_settings::Settings
+    aggs::Aggregates
     agg::AggregatePaths
     industry::IndustryPaths
     P::Matrix{Float64}
@@ -491,7 +498,8 @@ function _run(model::DSIC, set::SimSettings, ::Val{N}) where {N}
     end
 
     Pmat = transition_matrix(counts)
-    return SimulationOutput(set, par, agg, ind, Pmat,
+    return SimulationOutput(set, par, model.settings, model.sol.aggs,
+                            agg, ind, Pmat,
                             stationary_distribution(Pmat), counts)
 end
 
@@ -525,19 +533,102 @@ function _lambda_x(areal::Vector{Float64}, share::Vector{Float64},
 end
 
 # =====================================================================
-#  6. Reporting
+#  6. Saving: one stem, several files
+# =====================================================================
+
+"""
+    artifact_stem(save, tag) -> String
+
+Build a timestamped path stem from a `save` argument of the form
+`"directory/prefix"`, creating the directory if needed:
+
+    artifact_stem("output/baseline", "industry")
+      → "output/baseline_industry_20260804-143012"
+
+Callers append their own extensions to the returned stem, so a figure and
+its configuration file share a name and differ only in extension. Compute
+the stem **once** per artifact and reuse it — calling this twice would
+stamp two different seconds and break the pairing.
+
+The timestamp is local time to the second, which is enough to keep
+successive runs apart without making the names unreadable.
+"""
+function artifact_stem(save::AbstractString, tag::AbstractString)
+    dir = dirname(save)
+    pre = basename(save)
+    isempty(pre) && throw(ArgumentError(
+        "`save` must end in a filename prefix, e.g. \"output/baseline\" " *
+        "(got $(repr(save)))"))
+    isempty(dir) && (dir = ".")
+    mkpath(dir)
+    stamp = Dates.format(Dates.now(), "yyyymmdd-HHMMSS")
+    return joinpath(dir, string(pre, "_", tag, "_", stamp))
+end
+
+# TOML has no Symbol type, so write symbols as strings on the way out.
+# NaN is representable (TOML 1.0 allows `nan`), so ymin/ymax pass through.
+_tv(v::Symbol) = String(v)
+_tv(v) = v
+_tdict(x) = Dict{String,Any}(k => _tv(v) for (k, v) in to_dict(x))
+
+"""
+    write_run_config(path, o::SimulationOutput; extra = Dict())
+
+Write the configuration behind a simulation to `path` as TOML: the economic
+parameters, the model's numerical settings, the simulation settings, and
+the equilibrium the model had reached.
+
+Every saved figure and report is paired with one of these under the same
+name, so a plot on disk can always be traced back to the run that made it.
+Pass `extra` to record anything else — a git commit, a note about the
+experiment.
+
+The file is readable by `load_config`, so a calibration can be recovered
+from any saved artifact.
+"""
+function write_run_config(path::AbstractString, o::SimulationOutput;
+                          extra::AbstractDict = Dict{String,Any}())
+    doc = Dict{String,Any}(
+        "schema"    => SCHEMA_VERSION,
+        "generated" => string(Dates.now()),
+        "params"    => _tdict(o.params),
+        "settings"  => _tdict(o.model_settings),
+        "sim"       => _tdict(o.settings),
+        "equilibrium" => Dict{String,Any}(
+            "g_w"          => o.aggs.g_w,
+            "g_y"          => o.aggs.g_y,
+            "yhat"         => o.aggs.ŷ,
+            "r"            => (1 + o.aggs.g_y)^o.params.σ / o.params.β - 1,
+            "g_w_sim"      => mean(o.agg.g_w),
+            "L_r_sim"      => mean(o.agg.L_r),
+            "scriptL_sim"  => mean(o.agg.scriptL),
+            "markup_sim"   => mean(o.agg.markup),
+            "Lambda_w_sim" => mean(o.agg.Lambda_w),
+            "Lambda_x_sim" => mean(o.agg.Lambda_x),
+            "wage_check"   => mean(o.agg.wage_check)))
+    for (k, v) in extra
+        doc[String(k)] = v
+    end
+    open(path, "w") do io
+        TOML.print(io, doc; sorted = true)
+    end
+    return path
+end
+
+# =====================================================================
+#  7. Reporting
 # =====================================================================
 
 qt(x) = (quantile(x, 0.10), median(x), quantile(x, 0.90))
 
-function _line(name, x; d = 4)
+function _line(io::IO, name, x; d = 4)
     q10, q50, q90 = qt(x)
-    @printf("%-22s mean %9.*f  sd %8.*f  [p10 %8.*f  p50 %8.*f  p90 %8.*f]\n",
+    @printf(io, "%-22s mean %9.*f  sd %8.*f  [p10 %8.*f  p50 %8.*f  p90 %8.*f]\n",
             name, d, mean(x), d, std(x), d, q10, d, q50, d, q90)
 end
 
 """
-    sim_report(o::SimulationOutput)
+    sim_report(o::SimulationOutput; save = nothing, extra = Dict())
 
 Print the aggregate paths, the industry cross-section, and the `ñ`
 transition matrix with its invariant distribution.
@@ -545,79 +636,102 @@ transition matrix with its invariant distribution.
 `wage_check` should print as `1.000000`: it recomputes the equilibrium real
 wage from the simulated cross-section by a route the simulation never uses,
 so a deviation means the static block and the aggregation disagree.
+
+With `save = "output/baseline"` the same text is written to
+`output/baseline_report_<timestamp>.simres`, alongside a `.toml` of the run
+configuration under the identical name. The text is rendered once into a
+buffer and then both printed and written, so the file and the terminal can
+never disagree.
+
+Returns the path stem when saving, `nothing` otherwise.
 """
-function sim_report(o::SimulationOutput)
+function sim_report(o::SimulationOutput; save = nothing,
+                    extra::AbstractDict = Dict{String,Any}())
+    buf = IOBuffer()
+    _sim_report(buf, o)
+    txt = String(take!(buf))
+    print(txt)
+    save === nothing && return nothing
+
+    stem = artifact_stem(save, "report")
+    write(stem * ".simres", txt)
+    write_run_config(stem * ".toml", o; extra = extra)
+    @info "saved report" text = stem * ".simres" config = stem * ".toml"
+    return stem
+end
+
+function _sim_report(io::IO, o::SimulationOutput)
     a, ind, par = o.agg, o.industry, o.params
     n = par.n
 
-    println("\n", "═"^92)
-    println("SIMULATION   ", o.settings)
-    println("═"^92)
-    _line("g_w", a.g_w; d = 6)
-    _line("r", a.r; d = 6)
-    _line("L^r", a.L_r; d = 6)
-    _line("𝓛   aggregate Lerner", a.scriptL)
-    _line("𝓜 = 1/(1-𝓛)", a.markup)
-    _line("ŷ", a.yhat)
-    _line("A*  frontier index", a.A_star)
-    _line("(∫𝒜^{μ-1})^{1/(μ-1)}", a.A_within)
-    _line("Λ^w within", a.Lambda_w)
-    _line("Λ^x across", a.Lambda_x)
-    _line("Λ = Λ^w Λ^x", a.Lambda_w .* a.Lambda_x)
-    _line("mean ñ", a.n_active_mean)
-    @printf("%-22s %9.6f   (must be 1; deviation = static/aggregate gap)\n",
+    println(io, "\n", "═"^92)
+    println(io, "SIMULATION   ", o.settings)
+    println(io, "═"^92)
+    _line(io, "g_w", a.g_w; d = 6)
+    _line(io, "r",   a.r;   d = 6)
+    _line(io, "L^r", a.L_r; d = 6)
+    _line(io, "𝓛   aggregate Lerner", a.scriptL)
+    _line(io, "𝓜 = 1/(1-𝓛)", a.markup)
+    _line(io, "ŷ", a.yhat)
+    _line(io, "A*  frontier index", a.A_star)
+    _line(io, "(∫𝒜^{μ-1})^{1/(μ-1)}", a.A_within)
+    _line(io, "Λ^w within", a.Lambda_w)
+    _line(io, "Λ^x across", a.Lambda_x)
+    _line(io, "Λ = Λ^w Λ^x", a.Lambda_w .* a.Lambda_x)
+    _line(io, "mean ñ", a.n_active_mean)
+    @printf(io, "%-22s %9.6f   (must be 1; deviation = static/aggregate gap)\n",
             "wage check", mean(a.wage_check))
-    @printf("%-22s %9.3f%%  ← policy extrapolated past the grid\n",
+    @printf(io, "%-22s %9.3f%%  ← policy extrapolated past the grid\n",
             "states outside grid", 100 * mean(a.outside_frac))
 
     if size(ind, 1) > 0
-        println("\n", "─"^92)
-        println("INDUSTRY CROSS-SECTION   (", size(ind, 1), " periods × ",
+        println(io, "\n", "─"^92)
+        println(io, "INDUSTRY CROSS-SECTION   (", size(ind, 1), " periods × ",
                 size(ind, 2), " industries)")
-        println("─"^92)
-        _line("ℓ(j)  Lerner", vec(ind.lerner))
-        _line("𝓜(j) = 1/(1-ℓ)", vec(ind.markup))
-        _line("HHI(j) = μℓ(j)", vec(ind.hhi))
-        _line("A_max(j)", vec(ind.a_max))
-        _line("𝒜(j)  realised", vec(ind.a_realised))
-        _line("ã(j)  Cournot", vec(ind.a_tilde))
-        _line("Δ(j) = A_max/𝒜", vec(ind.delta))
-        _line("p(j)", vec(ind.price))
+        println(io, "─"^92)
+        _line(io, "ℓ(j)  Lerner", vec(ind.lerner))
+        _line(io, "𝓜(j) = 1/(1-ℓ)", vec(ind.markup))
+        _line(io, "HHI(j) = μℓ(j)", vec(ind.hhi))
+        _line(io, "A_max(j)", vec(ind.a_max))
+        _line(io, "𝒜(j)  realised", vec(ind.a_realised))
+        _line(io, "ã(j)  Cournot", vec(ind.a_tilde))
+        _line(io, "Δ(j) = A_max/𝒜", vec(ind.delta))
+        _line(io, "p(j)", vec(ind.price))
     end
 
-    println("\n", "─"^92)
-    println("ACTIVE-FIRM TRANSITIONS   P(ñ → ñ′)")
-    println("─"^92)
-    print("      ")
+    println(io, "\n", "─"^92)
+    println(io, "ACTIVE-FIRM TRANSITIONS   P(ñ → ñ′)")
+    println(io, "─"^92)
+    print(io, "      ")
     for b in 1:n
-        @printf("%10s", "→ $b")
+        @printf(io, "%10s", "→ $b")
     end
-    println("      (count)")
+    println(io, "      (count)")
     for aa in 1:n
-        @printf("ñ = %-2d", aa)
+        @printf(io, "ñ = %-2d", aa)
         for b in 1:n
-            @printf("%10.1f%s", o.P[aa, b]*100, "%")
+            @printf(io, "%10.4f", o.P[aa, b])
         end
-        @printf("   %10d\n", sum(@view o.n_counts[aa, :]))
+        @printf(io, "   %10d\n", sum(@view o.n_counts[aa, :]))
     end
-    println()
-    print("stationary  ")
+    println(io)
+    print(io, "stationary  ")
     for k in 1:n
-        @printf("%8.1f%s", o.stationary[k]*100, "%")
+        @printf(io, "%10.4f", o.stationary[k])
     end
-    println()
-    print("empirical   ")
+    println(io)
+    print(io, "empirical   ")
     emp = [mean(@view a.n_share[:, k]) for k in 1:n]
     for k in 1:n
-        @printf("%8.1f%s", emp[k]*100, "%")
+        @printf(io, "%10.4f", emp[k])
     end
-    @printf("      max gap %.2e\n", maximum(abs, o.stationary .- emp))
+    @printf(io, "      max gap %.2e\n", maximum(abs, o.stationary .- emp))
 
     # persistence: how often an industry keeps the same ñ
     diag_mass = sum(o.stationary[k] * o.P[k, k] for k in 1:n)
-    @printf("\n%-15s %9.1f%s   (probability ñ is unchanged next period)\n",
-            "persistence", diag_mass * 100, "%")
-    println("═"^92)
+    @printf(io, "\n%-22s %9.4f   (probability ñ is unchanged next period)\n",
+            "persistence", diag_mass)
+    println(io, "═"^92)
     return nothing
 end
 
