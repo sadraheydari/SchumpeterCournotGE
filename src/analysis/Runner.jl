@@ -122,18 +122,12 @@ end
     solve_model!(model, ws, draws; progress = true) -> (status, trace)
 
 Run the aggregate loop, collecting a row per pass.
-
-The progress bar tracks the *aggregate* loop only. The inner loops run
-hundreds of iterations each and would fight it for the same terminal line;
-their iteration counts go in the trace instead, which is the more useful
-signal — if the value iteration is still taking hundreds of sweeps on the
-tenth aggregate pass, the warm start has stopped working.
 """
 function solve_model!(model::DSIC, ws::VFIWorkspace, draws::SimulationDraws;
-                      progress::Bool = true)
+                      progress::Bool = true, progress_sym::Bool = true, progress_vfi::Bool = false)
     set = model.settings
     Λ = contraction_modulus(model.params, model.sol.aggs)
-
+    
     if progress
         @printf("Λ = β(1+g_y)^-σ·γ = %.4f %s   (floor on g_y: %.5f)\n",
                 Λ, Λ < 1 ? "✓" : "✗", feasible_growth_floor(model.params))
@@ -141,9 +135,31 @@ function solve_model!(model::DSIC, ws::VFIWorkspace, draws::SimulationDraws;
                 model.params.n, size(model.sol.V)..., length(model.sol.V),
                 Threads.nthreads())
     end
-
+    
     trace = NamedTuple[]
-    bar = progress ? ProgressBar(set.maxiter_agg, set.tol_agg) : nothing
+    
+    # Initialize Tracker and Bars
+    tracker = MultiTracker()
+    outer_bar = progress ? ProgressBar(set.maxiter_agg, set.tol_agg, color=YELLOW) : nothing
+    local sym_bar = nothing
+    local vfi_bar = nothing
+
+    on_vfi = progress_vfi ? (iter, resid) -> begin
+        if iter == 1
+            vfi_bar = ProgressBar(set.maxiter_vfi, set.tol_vfi, color=CYAN)
+        end
+        tracker.vfi = "VFI  : " * format_bar(vfi_bar, resid, iter)
+        render!(tracker)
+    end : nothing
+
+    on_sym = progress_sym ? (iter, gap) -> begin
+        if iter == 1
+            sym_bar = ProgressBar(set.maxiter_sym_policy, set.tol_sym_policy, color=GREEN)
+            tracker.vfi = "VFI  : Starting new policy evaluation..."
+        end
+        tracker.sym = "Sym  : " * format_bar(sym_bar, gap, iter)
+        render!(tracker)
+    end : nothing
 
     st = solve_equilibrium!(model, ws, draws;
         on_iter = (iter, resid, res) -> begin
@@ -152,13 +168,22 @@ function solve_model!(model::DSIC, ws::VFIWorkspace, draws::SimulationDraws;
                           n_active = res.n_active, outside = res.outside_frac,
                           sym = model.sol.sym_policy.iters,
                           vfi = model.sol.vfi.iters))
-            bar === nothing || update!(bar, resid, iter)
-        end)
-
+            if progress
+                tracker.outer = "Outer: " * format_bar(outer_bar, resid, iter)
+                render!(tracker)
+            end
+        end,
+        on_sym = on_sym,
+        on_vfi = on_vfi
+    )
+    
     if progress
-        st.converged ? finish!(bar, st.iters, st.residual) :
+        # Move cursor below the 3-line block cleanly before printing final output
+        print("\n\n") 
+        st.converged ? finish!(outer_bar, st.iters, st.residual) :
             println("\n✗ stopped after $(st.iters) passes, residual $(st.residual)")
     end
+    
     return (st, trace)
 end
 
