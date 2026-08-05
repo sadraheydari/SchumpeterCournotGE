@@ -29,7 +29,9 @@ module ProgressBars
 
 using Printf
 
-export ProgressBar, update!, finish!
+export ProgressBar, update!, finish!,
+         format_bar, render!, MultiTracker,
+         YELLOW, GREEN, RED, CYAN, RESET
 
 mutable struct ProgressBar
     max_iter::Int
@@ -224,6 +226,78 @@ function finish!(pt::ProgressBar, iter::Int, diff::Float64)
             GREEN,
             "with diff=$diff_str",
             RESET)
+end
+
+
+"""
+    format_bar(pt, diff, iter)
+
+Returns the formatted progress bar string without printing it.
+"""
+function format_bar(pt::ProgressBar, diff::Float64, iter::Int)
+    if !pt.initiated
+        pt.initiated = true
+        pt.log_diff0 = log(diff)
+    end
+
+    log_diff = log(diff)
+    pt.log_diff0 = max(pt.log_diff0, log_diff)
+
+    progress_tol = clamp(1 - (log_diff - pt.log_tol) / (pt.log_diff0 - pt.log_tol), 0.0, 1.0)
+    progress_iter = clamp(iter / pt.max_iter, 0.0, 1.0)
+
+    complete_progress = min(progress_tol, progress_iter)
+    max_progress = max(progress_tol, progress_iter)
+
+    filled = round(Int, complete_progress * pt.bar_length)
+    half_filled = round(Int, (max_progress - complete_progress) * pt.bar_length)
+    empty  = pt.bar_length - filled - half_filled
+
+    halph_bar = progress_iter < progress_tol ? "▀" : "▄"
+    bar = " " * repeat("█", filled) * repeat(halph_bar, half_filled) * repeat(" ", empty) * " "
+
+    elapsed = time() - pt.start_time
+    eta_iter = (1 - progress_iter) * (elapsed / progress_iter)
+    eta_tol = (1 - progress_tol) * (elapsed / progress_tol)
+    eta = min(eta_iter, max(eta_tol, 0.0))
+
+    percent = round(progress_tol * 100, digits=1)
+    diff_str = @sprintf("%.3e", diff)
+    eta_str = format_eta(eta)
+    percent_str = @sprintf("%5.1f%%", percent)
+    iter_str = @sprintf("%3d", iter)
+    
+    eta_color = eta_tol < eta_iter ? pt.color : CYAN
+
+    # Return the assembled string. Notice RESET is appended to prevent bleeding.
+    return string(CYAN, "Iter $iter_str ", pt.color, bar, " ", 
+                  "$percent_str (diff=$diff_str) ", 
+                  eta_color, "ETA=$eta_str", RESET)
+end
+
+
+mutable struct MultiTracker
+    drawn::Bool
+    outer::String
+    sym::String
+    vfi::String
+end
+
+MultiTracker() = MultiTracker(false, "", "", "")
+
+function render!(mt::MultiTracker)
+    if mt.drawn
+        # Move to start of line (\r), then up 2 lines (\033[2A) to reach the top of the 3-line block
+        print("\r\033[2A")
+    end
+    
+    # Print each line. \033[K ensures any leftover characters from previous longer strings are erased.
+    print("\033[K", mt.outer, "\n")
+    print("\033[K", mt.sym, "\n")
+    print("\033[K", mt.vfi) # No newline on the last item to anchor the cursor
+    
+    mt.drawn = true
+    flush(stdout)
 end
 
 end # module
