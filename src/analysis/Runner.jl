@@ -627,7 +627,8 @@ function run_model(model::DSIC; thin::Int = 10, progress::Bool = true,
     ws    = VFIWorkspace(model)
     draws = SimulationDraws(model)
 
-    status, trace = solve_model!(model, ws, draws; progress = progress)
+    status, trace = solve_model!(model, ws, draws; 
+                progress = progress, progress_sym = progress, progress_vfi = progress)
 
     panel = simulate_panel(model, draws; thin = thin)
     sym   = symmetric_start_panel(model, draws; thin = thin)
